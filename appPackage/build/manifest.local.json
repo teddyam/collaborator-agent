@@ -1,0 +1,62 @@
+{
+    "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.20/MicrosoftTeams.schema.json",
+    "version": "1.0.0",
+    "manifestVersion": "1.20",
+    "id": "20e75974-9b48-4016-9762-cebd6c6b4b33",
+    "name": {
+        "short": "collab-ts-local",
+        "full": "Collab Ts"
+    },
+    "developer": {
+        "name": "Microsoft",
+        "mpnId": "",
+        "websiteUrl": "https://microsoft.com",
+        "privacyUrl": "https://privacy.microsoft.com/privacystatement",
+        "termsOfUseUrl": "https://www.microsoft.com/legal/terms-of-use"
+    },
+    "description": {
+        "short": "Sample bot that uses OpenAI",
+        "full": "Sample bot that uses OpenAI"
+    },
+    "icons": {
+        "outline": "outline.png",
+        "color": "color.png"
+    },
+    "accentColor": "#FFFFFF",
+    "staticTabs": [
+        {
+            "entityId": "conversations",
+            "scopes": [
+                "personal"
+            ]
+        },
+        {
+            "entityId": "about",
+            "scopes": [
+                "personal"
+            ]
+        }
+    ],
+    "bots": [
+        {
+            "botId": "67c878ba-4123-403d-8ffb-c204cce65d04",
+            "scopes": [
+                "personal",
+                "team",
+                "groupChat"
+            ],
+            "isNotificationOnly": false,
+            "supportsCalling": false,
+            "supportsVideo": false,
+            "supportsFiles": false
+        }
+    ],
+    "validDomains": [
+        "qsr9hv10-3978.usw2.devtunnels.ms",
+        "*.botframework.com"
+    ],
+    "webApplicationInfo": {
+        "id": "67c878ba-4123-403d-8ffb-c204cce65d04",
+        "resource": "api://botid-67c878ba-4123-403d-8ffb-c204cce65d04"
+    }
+}
