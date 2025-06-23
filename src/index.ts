@@ -10,7 +10,18 @@ const app = new App({
   plugins: [new DevtoolsPlugin()],
 });
 
-app.on('message', async ({ send, activity, userGraph }) => {
+
+app.on('message', async ({ send, activity, userGraph, isSignedIn, signin }) => {
+
+  if (!isSignedIn) {
+    await signin({
+      // Customize the OAuth card text (only applies to OAuth flow, not SSO)
+      oauthCardText: 'Sign in to your account',
+      signInButtonText: 'Sign in' 
+    }); // call signin for your auth connection...
+    return;
+  }
+
   const prompt = new ChatPrompt({
     messages: storage.get(`${activity.conversation.id}/${activity.from.id}`),
     model: new OpenAIChatModel({
@@ -23,11 +34,12 @@ app.on('message', async ({ send, activity, userGraph }) => {
 
   const res = await prompt.send(activity.text);
   await send({ type: 'message', text: res.content });
+  console.log('Response:', res.content);
 
   const me = await userGraph.me.get();
 
   if (me) {
-    console.log("Access Token:", me); // ✅ This logs the JWT
+    console.log("Access Token:", me);
   } else {
     console.error("No token was returned.");
   }
