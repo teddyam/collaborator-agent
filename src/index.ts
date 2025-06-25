@@ -29,6 +29,33 @@ app.on('message', async ({ send, activity, userGraph, isSignedIn, signin }) => {
     return;
   }
   
+  // Check for timestamp query commands
+  if (activity.text?.trim() === 'SHOW RECENT MESSAGES') {
+    const recentMessages = promptManager.getRecentMessages(conversationKey, 5);
+    const messageList = recentMessages.map(msg => 
+      `[${new Date(msg.timestamp).toLocaleString()}] ${msg.role}: ${msg.content}`
+    ).join('\n');
+    
+    await send({ 
+      type: 'message', 
+      text: `📅 Recent messages:\n\`\`\`\n${messageList || 'No messages found'}\n\`\`\`` 
+    });
+    return;
+  }
+  
+  if (activity.text?.trim() === 'SHOW ALL TIMESTAMPS') {
+    const allMessages = promptManager.getMessagesWithTimestamps(conversationKey);
+    const messageList = allMessages.map(msg => 
+      `[${new Date(msg.timestamp).toLocaleString()}] ${msg.role}: ${msg.content.substring(0, 50)}...`
+    ).join('\n');
+    
+    await send({ 
+      type: 'message', 
+      text: `📋 All messages with timestamps:\n\`\`\`\n${messageList || 'No messages found'}\n\`\`\`` 
+    });
+    return;
+  }
+  
   // Get or create prompt with conversation history
   const prompt = promptManager.getOrCreatePrompt(conversationKey);
 

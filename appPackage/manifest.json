@@ -26,17 +26,25 @@
   "staticTabs": [
     {
       "entityId": "conversations",
-      "scopes": ["personal"]
+      "scopes": [
+        "personal"
+      ]
     },
     {
       "entityId": "about",
-      "scopes": ["personal"]
+      "scopes": [
+        "personal"
+      ]
     }
   ],
   "bots": [
     {
       "botId": "${{BOT_ID}}",
-      "scopes": ["personal", "team", "groupChat"],
+      "scopes": [
+        "personal",
+        "team",
+        "groupChat"
+      ],
       "isNotificationOnly": false,
       "supportsCalling": false,
       "supportsVideo": false,
@@ -50,5 +58,71 @@
   "webApplicationInfo": {
     "id": "${{BOT_ID}}",
     "resource": "api://botid-${{BOT_ID}}"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "ChatSettings.Read.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "ChatSettings.ReadWrite.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "ChatMessage.Read.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "ChatMember.Read.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "Chat.Manage.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "TeamsTab.Read.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "TeamsTab.Create.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "TeamsTab.Delete.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "TeamsTab.ReadWrite.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "TeamsAppInstallation.Read.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "OnlineMeeting.ReadBasic.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "Calls.AccessMedia.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "Calls.JoinGroupCalls.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "TeamsActivity.Send.Chat",
+          "type": "Application"
+        },
+        {
+          "name": "MeetingStage.Write.Chat",
+          "type": "Delegated"
+        }
+      ]
+    }
   }
 }

@@ -1,6 +1,6 @@
 import { ChatPrompt, Message } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
-import { SqliteKVStore } from '../storage/storage';
+import { SqliteKVStore, MessageRecord } from '../storage/storage';
 
 // Initialize storage
 const storage = new SqliteKVStore();
@@ -9,6 +9,9 @@ export interface PromptManager {
   getOrCreatePrompt(conversationKey: string): ChatPrompt;
   saveConversation(conversationKey: string, prompt: ChatPrompt): Promise<void>;
   clearConversation(conversationKey: string): void;
+  getMessagesWithTimestamps(conversationKey: string): MessageRecord[];
+  getMessagesByTimeRange(conversationKey: string, startTime?: string, endTime?: string): MessageRecord[];
+  getRecentMessages(conversationKey: string, limit?: number): MessageRecord[];
 }
 
 export class CorePromptManager implements PromptManager {
@@ -75,9 +78,22 @@ export class CorePromptManager implements PromptManager {
       console.log(`💡 Next message will create a fresh prompt for this conversation`);
     }
   }
-
   getStorage(): SqliteKVStore {
     return storage;
+  }
+
+  // ===== Timestamp-based Message Retrieval Methods =====
+
+  getMessagesWithTimestamps(conversationKey: string): MessageRecord[] {
+    return storage.getAllMessagesWithTimestamps(conversationKey);
+  }
+
+  getMessagesByTimeRange(conversationKey: string, startTime?: string, endTime?: string): MessageRecord[] {
+    return storage.getMessagesByTimeRange(conversationKey, startTime, endTime);
+  }
+
+  getRecentMessages(conversationKey: string, limit: number = 10): MessageRecord[] {
+    return storage.getRecentMessages(conversationKey, limit);
   }
 }
 

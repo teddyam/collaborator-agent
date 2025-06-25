@@ -2,7 +2,7 @@
     "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.20/MicrosoftTeams.schema.json",
     "version": "1.0.0",
     "manifestVersion": "1.20",
-    "id": "20e75974-9b48-4016-9762-cebd6c6b4b33",
+    "id": "67c878ba-4123-403d-8ffb-c204cce65d04",
     "name": {
         "short": "collab-ts-local",
         "full": "Collab Ts"
@@ -52,11 +52,77 @@
         }
     ],
     "validDomains": [
-        "qsr9hv10-3978.usw2.devtunnels.ms",
+        "xkz068jh-3978.usw2.devtunnels.ms",
         "*.botframework.com"
     ],
     "webApplicationInfo": {
         "id": "67c878ba-4123-403d-8ffb-c204cce65d04",
         "resource": "api://botid-67c878ba-4123-403d-8ffb-c204cce65d04"
+    },
+    "authorization": {
+        "permissions": {
+            "resourceSpecific": [
+                {
+                    "name": "ChatSettings.Read.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "ChatSettings.ReadWrite.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "ChatMessage.Read.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "ChatMember.Read.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "Chat.Manage.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "TeamsTab.Read.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "TeamsTab.Create.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "TeamsTab.Delete.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "TeamsTab.ReadWrite.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "TeamsAppInstallation.Read.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "OnlineMeeting.ReadBasic.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "Calls.AccessMedia.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "Calls.JoinGroupCalls.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "TeamsActivity.Send.Chat",
+                    "type": "Application"
+                },
+                {
+                    "name": "MeetingStage.Write.Chat",
+                    "type": "Delegated"
+                }
+            ]
+        }
     }
 }
