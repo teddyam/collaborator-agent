@@ -87,23 +87,47 @@ export class SqliteKVStore {
       stmt.run(key, JSON.stringify(value));
       console.log(`💾 Saved ${value.length} messages to conversations table for key: ${key}`);
       
-      // Also save individual messages to messages table for timestamp tracking
-      // First, clear existing messages for this conversation
-      const deleteStmt = this.db.prepare('DELETE FROM messages WHERE conversation_id = ?');
-      deleteStmt.run(key);
+      // For messages table, we need to be smarter about timestamps
+      // Only add new messages that don't exist yet, preserving original timestamps
       
-      // Then insert all current messages with current timestamp
-      const insertStmt = this.db.prepare(`
-        INSERT INTO messages (conversation_id, role, content, timestamp)
-        VALUES (?, ?, ?, ?)
-      `);
+      // Get existing message contents to avoid duplicates
+      const existingStmt = this.db.prepare('SELECT content, timestamp FROM messages WHERE conversation_id = ? ORDER BY id ASC');
+      const existingMessages = existingStmt.all(key) as { content: string; timestamp: string }[];
+      const existingContents = new Set(existingMessages.map(msg => msg.content));
       
-      const now = new Date().toISOString();
-      for (const message of value) {
-        insertStmt.run(key, message.role, message.content, now);
+      // Helper function to convert content to string for comparison
+      const getContentString = (content: any): string => {
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) return JSON.stringify(content);
+        return content ? String(content) : '';
+      };
+      
+      // Find truly new messages (not in existing set)
+      const newMessages = value.filter(msg => {
+        const contentStr = getContentString(msg.content);
+        return contentStr && !existingContents.has(contentStr);
+      });
+      
+      if (newMessages.length > 0) {
+        // Insert only new messages with individual timestamps
+        const insertStmt = this.db.prepare(`
+          INSERT INTO messages (conversation_id, role, content, timestamp)
+          VALUES (?, ?, ?, ?)
+        `);
+        
+        for (const message of newMessages) {
+          const messageTimestamp = new Date().toISOString();
+          const contentStr = getContentString(message.content);
+          insertStmt.run(key, message.role, contentStr, messageTimestamp);
+          
+          const preview = contentStr.length > 50 ? contentStr.substring(0, 50) + '...' : contentStr;
+          console.log(`📝 Added new message with timestamp ${messageTimestamp}: ${message.role} - ${preview}`);
+        }
+        
+        console.log(`📝 Added ${newMessages.length} new individual messages with unique timestamps`);
+      } else {
+        console.log(`📝 No new messages to add to messages table (${value.length} messages already exist)`);
       }
-      
-      console.log(`📝 Also saved ${value.length} individual messages with timestamps`);
       
     } catch (error) {
       console.error(`❌ Error writing to SQLite for key ${key}:`, error);
@@ -244,17 +268,38 @@ export class SqliteKVStore {
       const stmt = this.db.prepare(`
         SELECT * FROM messages 
         WHERE conversation_id = ? 
-        ORDER BY timestamp DESC 
+        ORDER BY id DESC 
         LIMIT ?
       `);
       
       const rows = stmt.all(conversationId, limit) as MessageRecord[];
       console.log(`🔍 Retrieved ${rows.length} recent messages for conversation: ${conversationId}`);
       
-      return rows.reverse(); // Return in chronological order
+      // Log the timestamps for debugging
+      if (rows.length > 0) {
+        console.log(`🕐 Recent message timestamps:`, rows.map(row => ({
+          id: row.id,
+          timestamp: row.timestamp,
+          role: row.role,
+          preview: row.content.substring(0, 30) + '...'
+        })));
+      }
+      
+      return rows.reverse(); // Return in chronological order (oldest first)
     } catch (error) {
       console.error(`❌ Error getting recent messages for conversation ${conversationId}:`, error);
       return [];
+    }
+  }
+
+  // Clear all messages for debugging (optional utility method)
+  clearAllMessages(): void {
+    try {
+      const stmt = this.db.prepare('DELETE FROM messages');
+      const result = stmt.run();
+      console.log(`🧹 Cleared all messages from database. Deleted ${result.changes} records.`);
+    } catch (error) {
+      console.error('❌ Error clearing all messages:', error);
     }
   }
 }
