@@ -1,6 +1,7 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { SqliteKVStore, MessageRecord } from '../storage/storage';
+import { SUMMARY_PROMPT } from './instructions';
 
 // Function schema definitions
 const GET_RECENT_MESSAGES_SCHEMA = {
@@ -50,7 +51,8 @@ const EMPTY_SCHEMA = {
 const storage = new SqliteKVStore();
 
 export interface PromptManager {
-  getOrCreatePrompt(conversationKey: string): ChatPrompt;
+  getOrCreatePrompt(conversationKey: string, promptInstruction?: string): ChatPrompt;
+  getOrCreateSummarizerPrompt(conversationKey: string): ChatPrompt;
   saveConversation(conversationKey: string, prompt: ChatPrompt): Promise<void>;
   clearConversation(conversationKey: string): void;
   getMessagesWithTimestamps(conversationKey: string): MessageRecord[];
@@ -64,7 +66,7 @@ export class CorePromptManager implements PromptManager {
   private conversationMessages = new Map<string, any[]>(); // Our own message tracking
   private activityContext = new Map<string, any>(); // Store activity context for chat type detection
 
-  getOrCreatePrompt(conversationKey: string): ChatPrompt {
+  getOrCreatePrompt(conversationKey: string, promptInstruction?: string): ChatPrompt {
     // Check if we already have this prompt in memory (reuse existing)
     if (this.prompts.has(conversationKey)) {
       console.log(`♻️ Reusing existing prompt for conversation: ${conversationKey}`);
@@ -81,9 +83,23 @@ export class CorePromptManager implements PromptManager {
     // Initialize our own message tracking
     this.conversationMessages.set(conversationKey, [...conversationHistory]);
 
+    // Prepare system message if prompt instruction is provided
+    const messages = [...conversationHistory];
+    // if (promptInstruction) {
+    //   console.log(`🎯 Adding custom prompt instruction for ${conversationKey}`);
+    //   // Add system message at the beginning if not already present
+    //   if (messages.length === 0 || messages[0].role !== 'system') {
+    //     messages.unshift({
+    //       role: 'system',
+    //       content: promptInstruction
+    //     });
+    //   }
+    // }
+
     // Create new ChatPrompt with conversation history and chain function declarations
     const prompt = new ChatPrompt({
-      messages: conversationHistory,
+      instructions: promptInstruction,
+      messages: messages,
       model: new OpenAIChatModel({
         model: process.env.AOAI_MODEL!,
         apiKey: process.env.AOAI_API_KEY!,
@@ -117,6 +133,11 @@ export class CorePromptManager implements PromptManager {
     console.log(`✨ Created new prompt for key: ${conversationKey}`);
 
     return prompt;
+  }
+
+  // Helper method to create a summarizer prompt
+  getOrCreateSummarizerPrompt(conversationKey: string): ChatPrompt {
+    return this.getOrCreatePrompt(conversationKey, SUMMARY_PROMPT);
   }
 
   // Handle function calls from the LLM
