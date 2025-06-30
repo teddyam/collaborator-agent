@@ -7,7 +7,7 @@ const app = new App({
 });
 
 
-app.on('message', async ({ send, activity, userGraph, isSignedIn, signin }) => {
+app.on('message', async ({ send, activity, isSignedIn, signin }) => {
 
   if (!isSignedIn) {
     await signin({
@@ -22,48 +22,32 @@ app.on('message', async ({ send, activity, userGraph, isSignedIn, signin }) => {
   const conversationKey = `${activity.conversation.id}`;
   console.log(`🔑 Conversation Key: ${conversationKey}`);
   
-  // Check for clear command
-  if (activity.text?.trim() === 'CLEAR PREVIOUS HISTORY') {
-    promptManager.clearConversation(conversationKey);
-    await send({ type: 'message', text: '🧹 This conversation history has been cleared.' });
-    return;
-  }
-  
-  // Check for timestamp query commands
-  if (activity.text?.trim() === 'SHOW RECENT MESSAGES') {
-    const recentMessages = promptManager.getRecentMessages(conversationKey, 5);
-    const messageList = recentMessages.map(msg => 
-      `[${new Date(msg.timestamp).toLocaleString()}] ${msg.role}: ${msg.content}`
-    ).join('\n');
-    
+  // Check for debug commands
+  if (activity.text?.trim() === 'msg.db') {
+    const debugOutput = promptManager.getStorage().debugPrintDatabase(conversationKey);
     await send({ 
       type: 'message', 
-      text: `📅 Recent messages:\n\`\`\`\n${messageList || 'No messages found'}\n\`\`\`` 
+      text: `🔍 **Database Debug Info:**\n\`\`\`json\n${debugOutput}\n\`\`\`` 
     });
     return;
   }
   
-  if (activity.text?.trim() === 'SHOW ALL TIMESTAMPS') {
-    const allMessages = promptManager.getMessagesWithTimestamps(conversationKey);
-    const messageList = allMessages.map(msg => 
-      `[${new Date(msg.timestamp).toLocaleString()}] ${msg.role}: ${msg.content.substring(0, 50)}...`
-    ).join('\n');
-    
-    await send({ 
-      type: 'message', 
-      text: `📋 All messages with timestamps:\n\`\`\`\n${messageList || 'No messages found'}\n\`\`\`` 
-    });
-    return;
-  }
-  
-  // Get or create prompt with conversation history
+  // Get or create prompt with conversation history and function calling support
   const prompt = promptManager.getOrCreatePrompt(conversationKey);
+  
+  // Track the user message in our own array
+  promptManager.addMessageToTracking(conversationKey, 'user', activity.text, activity);
 
   const res = await prompt.send(activity.text);
   await send({ type: 'message', text: res.content });
   console.log('🤖 LLM Response:', res.content);
   
-  // Save conversation using prompt.messages.values()
+  // Track the AI response in our own array (ensure content is not undefined)
+  if (res.content) {
+    promptManager.addMessageToTracking(conversationKey, 'model', res.content);
+  }
+  
+  // Save conversation using our own message tracking (efficient, filtered)
   await promptManager.saveConversation(conversationKey, prompt);
 });
 

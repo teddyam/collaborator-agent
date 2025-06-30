@@ -302,4 +302,62 @@ export class SqliteKVStore {
       console.error('❌ Error clearing all messages:', error);
     }
   }
+
+  // Debug function to print all database contents for a conversation
+  debugPrintDatabase(conversationId: string): string {
+    try {
+      console.log(`🔍 DEBUG: Printing database contents for conversation: ${conversationId}`);
+      
+      // Get conversation data from conversations table
+      const conversationStmt = this.db.prepare('SELECT * FROM conversations WHERE key = ?');
+      const conversationData = conversationStmt.get(conversationId) as any;
+      
+      // Get individual messages from messages table
+      const messagesStmt = this.db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY id ASC');
+      const messageData = messagesStmt.all(conversationId) as MessageRecord[];
+      
+      // Get total counts
+      const totalConversations = this.db.prepare('SELECT COUNT(*) as count FROM conversations').get() as { count: number };
+      const totalMessages = this.db.prepare('SELECT COUNT(*) as count FROM messages').get() as { count: number };
+      
+      const debugInfo = {
+        conversationId,
+        timestamp: new Date().toISOString(),
+        database_stats: {
+          total_conversations: totalConversations.count,
+          total_messages: totalMessages.count
+        },
+        conversation_table: {
+          exists: !!conversationData,
+          data: conversationData ? {
+            key: conversationData.key,
+            created_at: conversationData.created_at,
+            updated_at: conversationData.updated_at,
+            message_count: conversationData.value ? JSON.parse(conversationData.value).length : 0
+          } : null
+        },
+        messages_table: {
+          count: messageData.length,
+          messages: messageData.map(msg => ({
+            id: msg.id,
+            role: msg.role,
+            timestamp: msg.timestamp,
+            content_preview: msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : ''),
+            content_length: msg.content.length
+          }))
+        }
+      };
+      
+      console.log(`🔍 DEBUG INFO:`, JSON.stringify(debugInfo, null, 2));
+      return JSON.stringify(debugInfo, null, 2);
+      
+    } catch (error) {
+      console.error(`❌ Error debugging database for conversation ${conversationId}:`, error);
+      return JSON.stringify({
+        error: `Database debug failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        conversationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
 }
