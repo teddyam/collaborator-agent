@@ -79,12 +79,23 @@ export class CorePromptManager implements PromptManager {
     // First call for this conversation - create new prompt
     console.log(`✨ Creating new prompt for conversation: ${conversationKey}`);
     
-    // Get conversation history from storage
-    const conversationHistory = storage.get(conversationKey) || [];
-    console.log(`📚 Loading ${conversationHistory.length} messages from storage into new prompt`);
+    // Get conversation history from storage with names and timestamps
+    const conversationHistoryWithNames = storage.getAllMessagesWithTimestamps(conversationKey);
+    console.log(`📚 Loading ${conversationHistoryWithNames.length} messages with names from storage into new prompt`);
+    
+    // Convert to the format expected by ChatPrompt, including names in the content for user messages
+    const conversationHistory = conversationHistoryWithNames.map(msg => ({
+      role: msg.role,
+      content: msg.role === 'user' ? `${msg.name}: ${msg.content}` : msg.content
+    }));
 
-    // Initialize our own message tracking
-    this.conversationMessages.set(conversationKey, [...conversationHistory]);
+    // Initialize our own message tracking with enhanced format
+    const enhancedMessages = conversationHistoryWithNames.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+      name: msg.name
+    }));
+    this.conversationMessages.set(conversationKey, enhancedMessages);
 
     // Prepare system message if prompt instruction is provided
     const messages = [...conversationHistory];
@@ -102,7 +113,7 @@ export class CorePromptManager implements PromptManager {
     // Create new ChatPrompt with conversation history and chain function declarations
     const prompt = new ChatPrompt({
       instructions: promptInstruction,
-      messages: messages,
+      messages: messages as any, // Cast to bypass type checking since we're using enhanced format
       model: new OpenAIChatModel({
         model: process.env.AOAI_MODEL!,
         apiKey: process.env.AOAI_API_KEY!,
@@ -162,6 +173,7 @@ export class CorePromptManager implements PromptManager {
             messages: recentMessages.map(msg => ({
               timestamp: msg.timestamp,
               role: msg.role,
+              name: msg.name,
               content: msg.content
             })),
             count: recentMessages.length
@@ -172,7 +184,7 @@ export class CorePromptManager implements PromptManager {
           const displayCount = args.count || 5;
           const messagesToShow = this.getRecentMessages(conversationKey, displayCount);
           const messageList = messagesToShow.map(msg => 
-            `[${new Date(msg.timestamp).toLocaleString()}] ${msg.role}: ${msg.content}`
+            `[${new Date(msg.timestamp).toLocaleString()}] ${msg.name} (${msg.role}): ${msg.content}`
           ).join('\n');
           
           result = {
@@ -191,6 +203,7 @@ export class CorePromptManager implements PromptManager {
             messages: rangeMessages.map(msg => ({
               timestamp: msg.timestamp,
               role: msg.role,
+              name: msg.name,
               content: msg.content
             })),
             count: rangeMessages.length,
@@ -218,7 +231,18 @@ export class CorePromptManager implements PromptManager {
             messagesByRole: allMessages.reduce((acc, msg) => {
               acc[msg.role] = (acc[msg.role] || 0) + 1;
               return acc;
-            }, {} as Record<string, number>)
+            }, {} as Record<string, number>),
+            messagesByName: allMessages.reduce((acc, msg) => {
+              acc[msg.name] = (acc[msg.name] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+            participants: [...new Set(allMessages.map(msg => msg.name))],
+            messages: allMessages.map(msg => ({
+              timestamp: msg.timestamp,
+              role: msg.role,
+              name: msg.name,
+              content: msg.content
+            }))
           };
           break;
 

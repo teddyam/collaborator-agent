@@ -5,7 +5,7 @@ const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
 export const SUMMARY_PROMPT = `
 You are a helpful assistant that is listening to a conversation between a group of people.
-Your job is to listen to the conversation and provide a structured summary.
+Your job is to listen to the conversation and provide a structured summary with proper attribution.
 
 Today's Date: ${currentDate}
 
