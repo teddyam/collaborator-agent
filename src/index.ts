@@ -1,26 +1,18 @@
 import { App } from '@microsoft/teams.apps';
 import { DevtoolsPlugin } from '@microsoft/teams.dev';
 import { promptManager } from './agent/core';
+import { USE_MOCK_DATA, DEFAULT_MOCK_CONVERSATION } from './utils/constants';
 
 const app = new App({
   plugins: [new DevtoolsPlugin()],
 });
 
+app.on('message', async ({ send, activity }) => {
 
-app.on('message', async ({ send, activity, isSignedIn, signin }) => {
-
-  if (!isSignedIn) {
-    await signin({
-      // Customize the OAuth card text (only applies to OAuth flow, not SSO)
-      oauthCardText: 'Sign in to your account',
-      signInButtonText: 'Sign in' 
-    }); // call signin for your auth connection...
-    return;
-  }
-
-  // Create a unique key for this conversation
-  const conversationKey = `${activity.conversation.id}`;
-  console.log(`🔑 Conversation Key: ${conversationKey}`);
+  // Use conversation ID as key
+  const conversationKey = USE_MOCK_DATA ? DEFAULT_MOCK_CONVERSATION : `${activity.conversation.id}`;
+  
+  console.log(`🔑 Conversation Key: ${conversationKey}, Mock Mode: ${USE_MOCK_DATA}`);
   
   // Check for debug commands
   if (activity.text?.trim() === 'msg.db') {
@@ -32,25 +24,49 @@ app.on('message', async ({ send, activity, isSignedIn, signin }) => {
     return;
   }
   
-  // Get or create prompt with conversation history and function calling support
-  const prompt = promptManager.getOrCreatePrompt(conversationKey);
-  
-  // Track the user message in our own array
-  promptManager.addMessageToTracking(conversationKey, 'user', activity.text, activity);
-
-  const res = await prompt.send(activity.text);
-  await send({ type: 'message', text: res.content });
-  console.log('🤖 LLM Response:', res.content);
-  
-  // Track the AI response in our own array (ensure content is not undefined)
-  if (res.content) {
-    promptManager.addMessageToTracking(conversationKey, 'model', res.content);
+  // Check for clear conversation command
+  if (activity.text?.trim() === 'clear.convo') {
+    promptManager.clearConversation(conversationKey);
+    await send({ 
+      type: 'message', 
+      text: `🧹 **Conversation Cleared!**\n\nAll conversation history for this chat has been cleared from the database.\n\n💡 This includes:\n- Message history\n- Timestamps\n- Context data\n\nYou can start fresh now!` 
+    });
+    return;
   }
   
-  // Save conversation using our own message tracking (efficient, filtered)
-  await promptManager.saveConversation(conversationKey, prompt);
+  // Track user message
+  const userName = activity.from.name || 'user';
+  promptManager.addMessageToTracking(conversationKey, 'user', activity.text, activity, userName);
+  
+  // Check if the message contains "summarize" keyword
+  if (activity.text?.toLowerCase().includes('summarize')) {
+    console.log('🔍 Summarize keyword detected - engaging AI assistant');
+    
+    // Get or create prompt with conversation history and function calling support
+    const prompt = promptManager.getOrCreatePrompt(conversationKey);
+    
+    const res = await prompt.send(activity.text);
+    await send({ type: 'message', text: res.content });
+    console.log('🤖 AI Response sent:', res.content);
+    
+    // Track AI response
+    if (res.content) {
+      promptManager.addMessageToTracking(conversationKey, 'assistant', res.content, undefined, 'AI Assistant');
+    }
+  } else {
+    // Regular message - just log it without AI response
+    console.log('💬 Regular message logged (no AI response):', activity.text);
+  }
+  
+  // Save messages to database
+  await promptManager.saveMessagesDirectly(conversationKey);
+  console.log('💾 Messages saved to database');
 });
 
 (async () => {
-  await app.start(+(process.env.PORT || 3978));
+  const port = +(process.env.PORT || 3978);
+  
+  await app.start(port);
+  
+  console.log(`🚀 Teams Collaborator Bot started on port ${port}`);
 })();

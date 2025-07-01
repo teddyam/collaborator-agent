@@ -7,6 +7,7 @@ export interface MessageRecord {
   conversation_id: string;
   role: string;
   content: string;
+  name: string;
   timestamp: string;
 }
 
@@ -35,9 +36,19 @@ export class SqliteKVStore {
         conversation_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT 'Unknown',
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add name column to existing tables (migration for existing databases)
+    try {
+      this.db.exec(`ALTER TABLE messages ADD COLUMN name TEXT NOT NULL DEFAULT 'Unknown'`);
+      console.log(`🔄 Added 'name' column to existing messages table`);
+    } catch (error) {
+      // Column already exists, which is fine
+      console.log(`📝 'name' column already exists in messages table`);
+    }
 
     // Create indexes for better query performance
     this.db.exec(`
@@ -111,17 +122,18 @@ export class SqliteKVStore {
       if (newMessages.length > 0) {
         // Insert only new messages with individual timestamps
         const insertStmt = this.db.prepare(`
-          INSERT INTO messages (conversation_id, role, content, timestamp)
-          VALUES (?, ?, ?, ?)
+          INSERT INTO messages (conversation_id, role, content, name, timestamp)
+          VALUES (?, ?, ?, ?, ?)
         `);
         
         for (const message of newMessages) {
           const messageTimestamp = new Date().toISOString();
           const contentStr = getContentString(message.content);
-          insertStmt.run(key, message.role, contentStr, messageTimestamp);
+          const messageName = (message as any).name || 'Unknown';
+          insertStmt.run(key, message.role, contentStr, messageName, messageTimestamp);
           
           const preview = contentStr.length > 50 ? contentStr.substring(0, 50) + '...' : contentStr;
-          console.log(`📝 Added new message with timestamp ${messageTimestamp}: ${message.role} - ${preview}`);
+          console.log(`📝 Added new message with timestamp ${messageTimestamp}: ${message.role} (${messageName}) - ${preview}`);
         }
         
         console.log(`📝 Added ${newMessages.length} new individual messages with unique timestamps`);
@@ -341,6 +353,7 @@ export class SqliteKVStore {
           messages: messageData.map(msg => ({
             id: msg.id,
             role: msg.role,
+            name: msg.name,
             timestamp: msg.timestamp,
             content_preview: msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : ''),
             content_length: msg.content.length
@@ -358,6 +371,19 @@ export class SqliteKVStore {
         conversationId,
         timestamp: new Date().toISOString()
       });
+    }
+  }
+
+  // Method to insert a message with custom timestamp (for mock data)
+  insertMessageWithTimestamp(conversationId: string, role: string, content: string, timestamp: string, name?: string): void {
+    try {
+      const stmt = this.db.prepare(`
+        INSERT INTO messages (conversation_id, role, content, name, timestamp)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      stmt.run(conversationId, role, content, name || 'Unknown', timestamp);
+    } catch (error) {
+      console.error(`❌ Error inserting message with custom timestamp:`, error);
     }
   }
 }

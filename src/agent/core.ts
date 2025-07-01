@@ -2,6 +2,8 @@ import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { SqliteKVStore, MessageRecord } from '../storage/storage';
 import { SUMMARY_PROMPT } from './instructions';
+import { createMockDatabase } from '../mock/mockMessages';
+import { USE_MOCK_DATA, DEFAULT_MOCK_CONVERSATION } from '../utils/constants';
 
 // Function schema definitions
 const GET_RECENT_MESSAGES_SCHEMA = {
@@ -53,12 +55,13 @@ const storage = new SqliteKVStore();
 export interface PromptManager {
   getOrCreatePrompt(conversationKey: string, promptInstruction?: string): ChatPrompt;
   getOrCreateSummarizerPrompt(conversationKey: string): ChatPrompt;
-  saveConversation(conversationKey: string, prompt: ChatPrompt): Promise<void>;
   clearConversation(conversationKey: string): void;
   getMessagesWithTimestamps(conversationKey: string): MessageRecord[];
   getMessagesByTimeRange(conversationKey: string, startTime?: string, endTime?: string): MessageRecord[];
   getRecentMessages(conversationKey: string, limit?: number): MessageRecord[];
   getStorage(): SqliteKVStore;
+  saveMessagesDirectly(conversationKey: string): Promise<void>;
+  addMessageToTracking(conversationKey: string, role: string, content: string, activity?: any, name?: string): void;
 }
 
 export class CorePromptManager implements PromptManager {
@@ -124,6 +127,9 @@ export class CorePromptManager implements PromptManager {
     })
     .function('debug_database', 'Debug function to print database contents for this conversation', EMPTY_SCHEMA, async (args: any) => {
       return await this.handleFunctionCall(conversationKey, 'debug_database', args);
+    })
+    .function('create_mock_database', 'Create mock conversations for testing and debugging', EMPTY_SCHEMA, async (args: any) => {
+      return await this.handleFunctionCall(conversationKey, 'create_mock_database', args);
     });
 
     console.log(`✨ Created prompt with chained functions for conversation: ${conversationKey}`);
@@ -225,6 +231,15 @@ export class CorePromptManager implements PromptManager {
           };
           break;
 
+        case 'create_mock_database':
+          this.createMockDatabase('mock-conversation');
+          result = {
+            status: 'success',
+            message: 'Mock database created successfully',
+            summary: 'Mock conversation data has been created with sample messages'
+          };
+          break;
+
         default:
           result = {
             status: 'error',
@@ -250,13 +265,17 @@ export class CorePromptManager implements PromptManager {
 
 
   // Add a message to our tracking (called when user sends or AI responds)
-  addMessageToTracking(conversationKey: string, role: string, content: string, activity?: any): void {
+  addMessageToTracking(conversationKey: string, role: string, content: string, activity?: any, name?: string): void {
     const messages = this.conversationMessages.get(conversationKey) || [];
-    const newMessage = { role, content };
+    const newMessage = { 
+      role, 
+      content,
+      name: name || (role === 'user' ? 'Unknown User' : 'Assistant')
+    };
     messages.push(newMessage);
     this.conversationMessages.set(conversationKey, messages);
     
-    console.log(`📝 Added ${role} message to tracking for ${conversationKey} (total: ${messages.length})`);
+    console.log(`📝 Added ${role} message from "${newMessage.name}" to tracking for ${conversationKey} (total: ${messages.length})`);
     
     // Store or update activity context for better chat type detection
     if (activity) {
@@ -279,36 +298,6 @@ export class CorePromptManager implements PromptManager {
     }
   }
 
-  async saveConversation(conversationKey: string, _prompt: ChatPrompt): Promise<void> {
-    try {
-      // Use our own message tracking instead of prompt.messages.values()
-      const messages = this.conversationMessages.get(conversationKey) || [];
-      console.log(`💾 Saving conversation using our own tracking: ${messages.length} messages`);
-      
-      // Smart filtering based on chat type for storage optimization
-      let messagesToStore: any[];
-      const storedActivity = this.activityContext.get(conversationKey);
-      const isOneOnOne = storedActivity?.conversation?.isGroup === false;
-      
-      if (isOneOnOne) {
-        // Option 2: Store user + AI messages (conversational content)
-        messagesToStore = messages.filter(msg => 
-          msg.role === 'user' || msg.role === 'model'
-        );
-        console.log(`💬 1-on-1 chat: Storing user + AI messages (${messagesToStore.length}/${messages.length})`);
-      } else {
-        // Option 1: Store only user messages (group chats can get noisy)
-        messagesToStore = messages.filter(msg => msg.role === 'user');
-        console.log(`👥 Group chat: Storing user messages only (${messagesToStore.length}/${messages.length})`);
-      }
-      
-      // Save filtered messages to storage
-      storage.set(conversationKey, messagesToStore);
-      
-    } catch (error) {
-      console.error(`❌ Error saving conversation for key ${conversationKey}:`, error);
-    }
-  }
   clearConversation(conversationKey: string): void {
     // Clear from storage
     storage.clearConversation(conversationKey);
@@ -328,6 +317,7 @@ export class CorePromptManager implements PromptManager {
       console.log(`💡 Next message will create a fresh prompt for this conversation`);
     }
   }
+  
   getStorage(): SqliteKVStore {
     return storage;
   }
@@ -344,6 +334,61 @@ export class CorePromptManager implements PromptManager {
 
   getRecentMessages(conversationKey: string, limit: number = 10): MessageRecord[] {
     return storage.getRecentMessages(conversationKey, limit);
+  }
+
+  // ===== Mock Database for Debug Mode =====
+  
+  createMockDatabase(conversationId: string = 'mock-conversation'): void {
+    // Use the helper function to insert messages with custom timestamps
+    const insertMessageFn = (convId: string, role: string, content: string, timestamp: string, name?: string) => {
+      storage.insertMessageWithTimestamp(convId, role, content, timestamp, name);
+    };
+    
+    // Create mock database using the external function
+    createMockDatabase(insertMessageFn, conversationId);
+  }
+
+  /**
+   * Initialize mock data if USE_MOCK_DATA is true
+   */
+  initializeMockDataIfNeeded(): void {
+    if (USE_MOCK_DATA) {
+      console.log('🎭 Mock mode is enabled - initializing mock database...');
+      this.createMockDatabase(DEFAULT_MOCK_CONVERSATION);
+      console.log(`✅ Mock database initialized with conversation: ${DEFAULT_MOCK_CONVERSATION}`);
+    }
+  }
+
+  // Save messages directly without needing a prompt
+  async saveMessagesDirectly(conversationKey: string): Promise<void> {
+    try {
+      // Use our own message tracking to save directly
+      const messages = this.conversationMessages.get(conversationKey) || [];
+      console.log(`💾 Saving messages directly using tracking: ${messages.length} messages`);
+      
+      // Smart filtering based on chat type for storage optimization
+      let messagesToStore: any[];
+      const storedActivity = this.activityContext.get(conversationKey);
+      const isOneOnOne = storedActivity?.conversation?.isGroup === false;
+      
+      if (isOneOnOne) {
+        // Store user + AI messages (conversational content)
+        messagesToStore = messages.filter(msg => 
+          msg.role === 'user' || msg.role === 'model'
+        );
+        console.log(`💬 1-on-1 chat: Storing user + AI messages (${messagesToStore.length}/${messages.length})`);
+      } else {
+        // Store only user messages (group chats can get noisy)
+        messagesToStore = messages.filter(msg => msg.role === 'user');
+        console.log(`👥 Group chat: Storing user messages only (${messagesToStore.length}/${messages.length})`);
+      }
+      
+      // Save filtered messages to storage
+      storage.set(conversationKey, messagesToStore);
+      
+    } catch (error) {
+      console.error(`❌ Error saving messages directly for key ${conversationKey}:`, error);
+    }
   }
 }
 
