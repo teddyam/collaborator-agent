@@ -42,16 +42,14 @@ app.on('message', async ({ send, activity }) => {
   if (activity.text?.toLowerCase().includes('summarize')) {
     console.log('🔍 Summarize keyword detected - engaging AI assistant');
     
-    // Get or create prompt with conversation history and function calling support
-    const prompt = promptManager.getOrCreatePrompt(conversationKey);
-    
-    const res = await prompt.send(activity.text);
-    await send({ type: 'message', text: res.content });
-    console.log('🤖 AI Response sent:', res.content);
+    // Use the manager to process the request
+    const response = await promptManager.processUserRequest(conversationKey, activity.text);
+    await send({ type: 'message', text: response });
+    console.log('🤖 AI Response sent:', response);
     
     // Track AI response
-    if (res.content) {
-      promptManager.addMessageToTracking(conversationKey, 'assistant', res.content, undefined, 'AI Assistant');
+    if (response) {
+      promptManager.addMessageToTracking(conversationKey, 'assistant', response, undefined, 'AI Assistant');
     }
   } else {
     // Regular message - just log it without AI response
