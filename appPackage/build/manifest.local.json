@@ -63,64 +63,8 @@
         "permissions": {
             "resourceSpecific": [
                 {
-                    "name": "ChatSettings.Read.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "ChatSettings.ReadWrite.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "ChatMessage.Read.Chat",
-                    "type": "Application"
-                },
-                {
                     "name": "ChatMember.Read.Chat",
                     "type": "Application"
-                },
-                {
-                    "name": "Chat.Manage.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "TeamsTab.Read.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "TeamsTab.Create.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "TeamsTab.Delete.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "TeamsTab.ReadWrite.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "TeamsAppInstallation.Read.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "OnlineMeeting.ReadBasic.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "Calls.AccessMedia.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "Calls.JoinGroupCalls.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "TeamsActivity.Send.Chat",
-                    "type": "Application"
-                },
-                {
-                    "name": "MeetingStage.Write.Chat",
-                    "type": "Delegated"
                 }
             ]
         }
