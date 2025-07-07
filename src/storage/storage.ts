@@ -11,6 +11,22 @@ export interface MessageRecord {
   timestamp: string;
 }
 
+// Interface for action items
+export interface ActionItem {
+  id: number;
+  conversation_id: string;
+  title: string;
+  description: string;
+  assigned_to: string;
+  assigned_by: string; // Who identified/assigned this action item
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  due_date?: string; // ISO date string
+  created_at: string;
+  updated_at: string;
+  source_message_ids?: string; // JSON array of message IDs that led to this action item
+}
+
 // SQLite-based KV store implementation
 export class SqliteKVStore {
   private db: Database.Database;
@@ -41,6 +57,24 @@ export class SqliteKVStore {
       )
     `);
 
+    // Create action items table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS action_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        assigned_to TEXT NOT NULL,
+        assigned_by TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+        priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+        due_date DATETIME NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        source_message_ids TEXT NULL
+      )
+    `);
+
     // Add name column to existing tables (migration for existing databases)
     try {
       this.db.exec(`ALTER TABLE messages ADD COLUMN name TEXT NOT NULL DEFAULT 'Unknown'`);
@@ -57,6 +91,23 @@ export class SqliteKVStore {
     
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)
+    `);
+
+    // Action items indexes
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_action_items_conversation_id ON action_items(conversation_id)
+    `);
+    
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_action_items_assigned_to ON action_items(assigned_to)
+    `);
+    
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status)
+    `);
+    
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_action_items_due_date ON action_items(due_date)
     `);
 
     // Create trigger to update conversation timestamp
@@ -246,6 +297,10 @@ export class SqliteKVStore {
       let sql = 'SELECT * FROM messages WHERE conversation_id = ?';
       const params: any[] = [conversationId];
 
+      console.log(`🔍 SQL Query Debug - Conversation: ${conversationId}`);
+      console.log(`🔍 SQL Query Debug - Start time: ${startTime}`);
+      console.log(`🔍 SQL Query Debug - End time: ${endTime}`);
+
       if (startTime) {
         sql += ' AND timestamp >= ?';
         params.push(startTime);
@@ -258,10 +313,35 @@ export class SqliteKVStore {
 
       sql += ' ORDER BY timestamp ASC';
 
+      console.log(`🔍 SQL Query Debug - Final SQL: ${sql}`);
+      console.log(`🔍 SQL Query Debug - Parameters:`, params);
+
       const stmt = this.db.prepare(sql);
       const rows = stmt.all(...params) as MessageRecord[];
       
       console.log(`🔍 Retrieved ${rows.length} messages from time range for conversation: ${conversationId}`);
+      
+      // Additional debugging - show first few timestamps if available
+      if (rows.length > 0) {
+        console.log(`🔍 SQL Query Debug - First message timestamp: ${rows[0].timestamp}`);
+        console.log(`🔍 SQL Query Debug - Last message timestamp: ${rows[rows.length - 1].timestamp}`);
+      }
+      
+      // If no results but we expected some, let's debug further
+      if (rows.length === 0 && (startTime || endTime)) {
+        // Get all messages to compare timestamps
+        const allRows = this.db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC').all(conversationId) as MessageRecord[];
+        console.log(`🔍 SQL Query Debug - Total messages in conversation: ${allRows.length}`);
+        if (allRows.length > 0) {
+          console.log(`🔍 SQL Query Debug - Actual first timestamp: ${allRows[0].timestamp}`);
+          console.log(`🔍 SQL Query Debug - Actual last timestamp: ${allRows[allRows.length - 1].timestamp}`);
+          console.log(`🔍 SQL Query Debug - String comparison test:`, {
+            firstVsStart: startTime ? `"${allRows[0].timestamp}" >= "${startTime}" = ${allRows[0].timestamp >= startTime}` : 'N/A',
+            lastVsEnd: endTime ? `"${allRows[allRows.length - 1].timestamp}" <= "${endTime}" = ${allRows[allRows.length - 1].timestamp <= endTime}` : 'N/A'
+          });
+        }
+      }
+      
       return rows;
     } catch (error) {
       console.error(`❌ Error getting messages by time range for conversation ${conversationId}:`, error);
@@ -384,6 +464,165 @@ export class SqliteKVStore {
       stmt.run(conversationId, role, content, name || 'Unknown', timestamp);
     } catch (error) {
       console.error(`❌ Error inserting message with custom timestamp:`, error);
+    }
+  }
+
+  // ===== ACTION ITEMS MANAGEMENT =====
+
+  // Create a new action item
+  createActionItem(actionItem: Omit<ActionItem, 'id' | 'created_at' | 'updated_at'>): ActionItem {
+    try {
+      const stmt = this.db.prepare(`
+        INSERT INTO action_items (
+          conversation_id, title, description, assigned_to, assigned_by, 
+          status, priority, due_date, source_message_ids
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      const result = stmt.run(
+        actionItem.conversation_id,
+        actionItem.title,
+        actionItem.description,
+        actionItem.assigned_to,
+        actionItem.assigned_by,
+        actionItem.status,
+        actionItem.priority,
+        actionItem.due_date || null,
+        actionItem.source_message_ids || null
+      );
+
+      const newActionItem = this.getActionItemById(result.lastInsertRowid as number);
+      console.log(`✅ Created action item #${result.lastInsertRowid}: "${actionItem.title}" for ${actionItem.assigned_to}`);
+      return newActionItem!;
+    } catch (error) {
+      console.error(`❌ Error creating action item:`, error);
+      throw error;
+    }
+  }
+
+  // Get action item by ID
+  getActionItemById(id: number): ActionItem | undefined {
+    try {
+      const stmt = this.db.prepare('SELECT * FROM action_items WHERE id = ?');
+      const row = stmt.get(id) as ActionItem | undefined;
+      return row;
+    } catch (error) {
+      console.error(`❌ Error getting action item ${id}:`, error);
+      return undefined;
+    }
+  }
+
+  // Get all action items for a conversation
+  getActionItemsByConversation(conversationId: string): ActionItem[] {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT * FROM action_items 
+        WHERE conversation_id = ? 
+        ORDER BY created_at DESC
+      `);
+      const rows = stmt.all(conversationId) as ActionItem[];
+      console.log(`🔍 Retrieved ${rows.length} action items for conversation: ${conversationId}`);
+      return rows;
+    } catch (error) {
+      console.error(`❌ Error getting action items for conversation ${conversationId}:`, error);
+      return [];
+    }
+  }
+
+  // Get action items assigned to a specific person
+  getActionItemsForUser(assignedTo: string, status?: string): ActionItem[] {
+    try {
+      let sql = 'SELECT * FROM action_items WHERE assigned_to = ?';
+      const params: any[] = [assignedTo];
+      
+      if (status) {
+        sql += ' AND status = ?';
+        params.push(status);
+      }
+      
+      sql += ' ORDER BY priority DESC, due_date ASC, created_at DESC';
+      
+      const stmt = this.db.prepare(sql);
+      const rows = stmt.all(...params) as ActionItem[];
+      console.log(`🔍 Retrieved ${rows.length} action items for user: ${assignedTo}${status ? ` (status: ${status})` : ''}`);
+      return rows;
+    } catch (error) {
+      console.error(`❌ Error getting action items for user ${assignedTo}:`, error);
+      return [];
+    }
+  }
+
+  // Update action item status
+  updateActionItemStatus(id: number, status: ActionItem['status'], updatedBy?: string): boolean {
+    try {
+      const stmt = this.db.prepare(`
+        UPDATE action_items 
+        SET status = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = ?
+      `);
+      const result = stmt.run(status, id);
+      
+      if (result.changes > 0) {
+        console.log(`✅ Updated action item #${id} status to: ${status}${updatedBy ? ` by ${updatedBy}` : ''}`);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`❌ Error updating action item ${id} status:`, error);
+      return false;
+    }
+  }
+
+  // Clear all action items for a conversation
+  clearActionItems(conversationId: string): number {
+    try {
+      const stmt = this.db.prepare('DELETE FROM action_items WHERE conversation_id = ?');
+      const result = stmt.run(conversationId);
+      console.log(`🧹 Cleared ${result.changes} action items for conversation: ${conversationId}`);
+      return result.changes as number;
+    } catch (error) {
+      console.error(`❌ Error clearing action items for conversation ${conversationId}:`, error);
+      return 0;
+    }
+  }
+
+  // Clear ALL action items (for complete database reset)
+  clearAllActionItems(): number {
+    try {
+      const stmt = this.db.prepare('DELETE FROM action_items');
+      const result = stmt.run();
+      console.log(`🧹 Cleared ALL action items from database: ${result.changes} items removed`);
+      return result.changes as number;
+    } catch (error) {
+      console.error(`❌ Error clearing all action items:`, error);
+      return 0;
+    }
+  }
+
+  // Get action items summary for debugging
+  getActionItemsSummary(): any {
+    try {
+      const totalItems = this.db.prepare('SELECT COUNT(*) as count FROM action_items').get() as { count: number };
+      const statusCounts = this.db.prepare(`
+        SELECT status, COUNT(*) as count 
+        FROM action_items 
+        GROUP BY status
+      `).all() as { status: string; count: number }[];
+      
+      const priorityCounts = this.db.prepare(`
+        SELECT priority, COUNT(*) as count 
+        FROM action_items 
+        GROUP BY priority
+      `).all() as { priority: string; count: number }[];
+
+      return {
+        total_action_items: totalItems.count,
+        by_status: statusCounts,
+        by_priority: priorityCounts
+      };
+    } catch (error) {
+      console.error(`❌ Error getting action items summary:`, error);
+      return { error: 'Failed to get summary' };
     }
   }
 }

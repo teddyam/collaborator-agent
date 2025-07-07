@@ -2,6 +2,7 @@ import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { SqliteKVStore } from '../storage/storage';
 import { SUMMARY_PROMPT } from '../agent/instructions';
+import { getModelConfig } from '../utils/config';
 
 // Function schemas for the summarizer
 const GET_RECENT_MESSAGES_SCHEMA = {
@@ -57,15 +58,17 @@ export function createSummarizerPrompt(conversationId: string, storage: SqliteKV
   // Instead, we let the AI use function tools to fetch exactly what it needs
   console.log(`🔧 Summarizer will use function tools for dynamic message retrieval`);
 
+  const summarizerModelConfig = getModelConfig('summarizer');
+
   // Create the specialized summarizer prompt with function tools only
   const summarizerPrompt = new ChatPrompt({
     instructions: SUMMARY_PROMPT,
     // No pre-loaded messages - AI will fetch what it needs using function tools
     model: new OpenAIChatModel({
-      model: process.env.AOAI_MODEL!,
-      apiKey: process.env.AOAI_API_KEY!,
-      endpoint: process.env.AOAI_ENDPOINT!,
-      apiVersion: '2025-04-01-preview',
+      model: summarizerModelConfig.model,
+      apiKey: summarizerModelConfig.apiKey,
+      endpoint: summarizerModelConfig.endpoint,
+      apiVersion: summarizerModelConfig.apiVersion,
     }),
   })
   .function('get_recent_messages', 'Retrieve recent messages from the conversation history with timestamps', GET_RECENT_MESSAGES_SCHEMA, async (args: any) => {

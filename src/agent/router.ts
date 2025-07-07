@@ -1,14 +1,19 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { SqliteKVStore } from '../storage/storage';
 import { createSummarizerPrompt } from '../capabilities/summarize';
+import { createActionItemsPrompt } from '../capabilities/actionItems';
 
 // Router that provides specific prompts for different agent types
-export async function routeToPrompt(agentType: string, conversationId: string, storage: SqliteKVStore): Promise<ChatPrompt> {
+export async function routeToPrompt(agentType: string, conversationId: string, storage: SqliteKVStore, participants: string[] = []): Promise<ChatPrompt> {
   console.log(`🔀 Routing to ${agentType} agent for conversation: ${conversationId}`);
   
   switch (agentType.toLowerCase()) {
     case 'summarizer':
       return createSummarizerPrompt(conversationId, storage);
+    
+    case 'actionitems':
+    case 'action_items':
+      return createActionItemsPrompt(conversationId, storage, participants);
     
     // Future agents can be added here:
     // case 'codereviewer':
