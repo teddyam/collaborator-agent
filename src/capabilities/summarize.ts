@@ -48,25 +48,19 @@ const EMPTY_SCHEMA = {
 };
 
 /**
- * Creates a specialized summarizer prompt with conversation history and summarization functions
+ * Creates a specialized summarizer prompt with function tools for dynamic message retrieval
  */
 export function createSummarizerPrompt(conversationId: string, storage: SqliteKVStore): ChatPrompt {
   console.log(`📋 Creating Summarizer Agent for conversation: ${conversationId}`);
   
-  // Get conversation history with names and timestamps
-  const conversationHistoryWithNames = storage.getAllMessagesWithTimestamps(conversationId);
-  console.log(`📚 Loading ${conversationHistoryWithNames.length} messages with names for summarizer`);
-  
-  // Convert to the format expected by ChatPrompt, including names in the content for user messages
-  const conversationHistory = conversationHistoryWithNames.map(msg => ({
-    role: msg.role,
-    content: msg.role === 'user' ? `${msg.name}: ${msg.content}` : msg.content
-  }));
+  // Note: We don't load conversation history upfront to avoid redundancy and double execution
+  // Instead, we let the AI use function tools to fetch exactly what it needs
+  console.log(`🔧 Summarizer will use function tools for dynamic message retrieval`);
 
-  // Create the specialized summarizer prompt
+  // Create the specialized summarizer prompt with function tools only
   const summarizerPrompt = new ChatPrompt({
     instructions: SUMMARY_PROMPT,
-    messages: conversationHistory as any,
+    // No pre-loaded messages - AI will fetch what it needs using function tools
     model: new OpenAIChatModel({
       model: process.env.AOAI_MODEL!,
       apiKey: process.env.AOAI_API_KEY!,
@@ -76,7 +70,9 @@ export function createSummarizerPrompt(conversationId: string, storage: SqliteKV
   })
   .function('get_recent_messages', 'Retrieve recent messages from the conversation history with timestamps', GET_RECENT_MESSAGES_SCHEMA, async (args: any) => {
     const limit = args.limit || 5;
+    console.log(`🔍 FUNCTION CALL: get_recent_messages with limit=${limit} for conversation=${conversationId}`);
     const recentMessages = storage.getRecentMessages(conversationId, limit);
+    console.log(`📨 Retrieved ${recentMessages.length} recent messages`);
     return JSON.stringify({
       status: 'success',
       messages: recentMessages.map(msg => ({
@@ -90,7 +86,9 @@ export function createSummarizerPrompt(conversationId: string, storage: SqliteKV
   })
   .function('get_messages_by_time_range', 'Retrieve messages from a specific time range', GET_MESSAGES_BY_TIME_RANGE_SCHEMA, async (args: any) => {
     const { start_time, end_time } = args;
+    console.log(`🔍 FUNCTION CALL: get_messages_by_time_range with start=${start_time}, end=${end_time} for conversation=${conversationId}`);
     const rangeMessages = storage.getMessagesByTimeRange(conversationId, start_time, end_time);
+    console.log(`📅 Retrieved ${rangeMessages.length} messages from time range`);
     return JSON.stringify({
       status: 'success',
       messages: rangeMessages.map(msg => ({
@@ -105,7 +103,9 @@ export function createSummarizerPrompt(conversationId: string, storage: SqliteKV
   })
   .function('show_recent_messages', 'Display recent messages in a formatted way for the user', SHOW_RECENT_MESSAGES_SCHEMA, async (args: any) => {
     const displayCount = args.count || 5;
+    console.log(`🔍 FUNCTION CALL: show_recent_messages with count=${displayCount} for conversation=${conversationId}`);
     const messagesToShow = storage.getRecentMessages(conversationId, displayCount);
+    console.log(`📋 Formatting ${messagesToShow.length} messages for display`);
     const messageList = messagesToShow.map(msg => 
       `[${new Date(msg.timestamp).toLocaleString()}] ${msg.name} (${msg.role}): ${msg.content}`
     ).join('\n');
@@ -118,7 +118,9 @@ export function createSummarizerPrompt(conversationId: string, storage: SqliteKV
     });
   })
   .function('summarize_conversation', 'Get a summary of the conversation with message counts and time span', EMPTY_SCHEMA, async (_args: any) => {
+    console.log(`🔍 FUNCTION CALL: summarize_conversation for conversation=${conversationId}`);
     const allMessages = storage.getAllMessagesWithTimestamps(conversationId);
+    console.log(`📊 Retrieved ${allMessages.length} total messages for conversation summary`);
     return JSON.stringify({
       status: 'success',
       totalMessages: allMessages.length,

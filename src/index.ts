@@ -1,7 +1,6 @@
 import { App } from '@microsoft/teams.apps';
 import { DevtoolsPlugin } from '@microsoft/teams.dev';
 import { promptManager } from './agent/core';
-import { USE_MOCK_DATA, DEFAULT_MOCK_CONVERSATION } from './utils/constants';
 
 const app = new App({
   plugins: [new DevtoolsPlugin()],
@@ -10,9 +9,7 @@ const app = new App({
 app.on('message', async ({ send, activity }) => {
 
   // Use conversation ID as key
-  const conversationKey = USE_MOCK_DATA ? DEFAULT_MOCK_CONVERSATION : `${activity.conversation.id}`;
-  
-  console.log(`🔑 Conversation Key: ${conversationKey}, Mock Mode: ${USE_MOCK_DATA}`);
+  const conversationKey = `${activity.conversation.id}`;
   
   // Check for debug commands
   if (activity.text?.trim() === 'msg.db') {
@@ -38,22 +35,26 @@ app.on('message', async ({ send, activity }) => {
   const userName = activity.from.name || 'user';
   promptManager.addMessageToTracking(conversationKey, 'user', activity.text, activity, userName);
   
-  // Check if the message contains "summarize" keyword
-  if (activity.text?.toLowerCase().includes('summarize')) {
-    console.log('🔍 Summarize keyword detected - engaging AI assistant');
+  // Let the manager agent decide if this requires AI processing
+  if (activity.text && activity.text.trim() !== '') {
+    console.log('🔍 Processing user query with manager agent');
     
     // Use the manager to process the request
     const response = await promptManager.processUserRequest(conversationKey, activity.text);
-    await send({ type: 'message', text: response });
-    console.log('🤖 AI Response sent:', response);
     
-    // Track AI response
-    if (response) {
+    // Check if manager wants to stay silent
+    if (response && response.trim() !== 'STAY_SILENT') {
+      await send({ type: 'message', text: response });
+      console.log('🤖 AI Response sent:', response);
+      
+      // Track AI response
       promptManager.addMessageToTracking(conversationKey, 'assistant', response, undefined, 'AI Assistant');
+    } else {
+      console.log('🤫 Manager chose to stay silent - no response sent');
     }
   } else {
-    // Regular message - just log it without AI response
-    console.log('💬 Regular message logged (no AI response):', activity.text);
+    // Empty message - just log it without AI response
+    console.log('💬 Empty message logged (no AI response)');
   }
   
   // Save messages to database

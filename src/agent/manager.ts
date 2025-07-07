@@ -15,25 +15,42 @@ export class ManagerPrompt {
     private initializePrompt(): ChatPrompt {
         const managerInstructions = `
 You are a Manager Agent that coordinates different specialized sub-agents for a Microsoft Teams collaboration bot.
-Your role is to analyze user requests and delegate tasks to the appropriate specialized agent.
+Your role is to analyze user requests and intelligently delegate tasks to the appropriate specialized agent.
+You should STAY SILENT for regular conversational messages that don't require any agent capabilities.
 
 Current Date: ${new Date().toISOString().split('T')[0]}
 
 <AVAILABLE AGENTS>
 1. **Summarizer Agent**: Handles conversation summaries, message analysis, and historical data queries
-   - Use for: "summarize", "what did we discuss", "recent messages", "conversation analysis"
-   - Capabilities: conversation summaries, message retrieval, participant analysis
+   - Use for: summary requests, conversation analysis, message retrieval, participant insights
+   - Capabilities: conversation summaries, message retrieval, participant analysis, time-based queries
 
 <INSTRUCTIONS>
-1. Analyze the user's request carefully
-2. Determine which specialized agent should handle the task
-3. Call the appropriate function to delegate the work
-4. Return the result from the specialized agent to the user
-5. If the request doesn't match any agent, provide a helpful response about available capabilities
+1. Analyze the user's request carefully to understand their intent
+2. If the request requires a specialized agent, delegate the task
+3. If the request is just casual conversation, greeting, or general chat, return EXACTLY: "STAY_SILENT"
+4. Return the result from the specialized agent to the user when delegation occurs
+5. DO NOT provide explanations about capabilities unless explicitly asked
 
-<DELEGATION RULES>
-- Any request about summarizing, analyzing conversation history, or retrieving messages → Summarizer Agent
-- If uncertain, default to Summarizer Agent for conversation-related queries
+<DELEGATION RULES FOR SUMMARIZER AGENT>
+Delegate to the Summarizer Agent for ANY request that involves:
+- Keywords: "summary", "summarize", "overview", "recap", "what happened", "what did we discuss"
+- Message analysis: "recent messages", "show messages", "conversation history"
+- Time-based queries: "yesterday", "last week", "today", "recent", "latest"
+- Participant queries: "who said", "participants", "contributors"
+- Topic analysis: "what topics", "main points", "key discussions"
+- General conversation questions: "catch me up", "fill me in", "what's been discussed"
+
+<STAY SILENT FOR>
+- Casual conversation: "hello", "hi", "how are you", "thanks", "okay", "yes", "no"
+- General chat: regular discussion between participants
+- Reactions: "lol", "haha", "👍", emojis, short responses
+- Unrelated topics: non-conversation analysis requests
+- When uncertain if the message needs any agent assistance
+
+<CRITICAL RULE>
+When no agent capabilities are needed, return EXACTLY the phrase: "STAY_SILENT"
+Do not add any other text, explanations, or responses when staying silent.
 `;
 
         const prompt = new ChatPrompt({
@@ -78,7 +95,7 @@ Conversation ID: ${conversationId}
 Please analyze this request and delegate it to the appropriate specialized agent.
 `);
 
-            console.log(`🎯 Manager response: ${response.content}`);
+            console.log(`🎯 Manager delegation completed. Response content length: ${response.content?.length || 0}`);
             return response.content || 'No response generated';
 
         } catch (error) {
@@ -89,16 +106,17 @@ Please analyze this request and delegate it to the appropriate specialized agent
 
     private async delegateToSummarizer(userRequest: string, conversationId: string): Promise<string> {
         try {
-            console.log(`📋 Delegating to Summarizer Agent: "${userRequest}" for conversation: ${conversationId}`);
+            console.log(`📋 DELEGATION: Delegating to Summarizer Agent: "${userRequest}" for conversation: ${conversationId}`);
 
             // Import and use the router to get the appropriate prompt
             const { routeToPrompt } = require('./router');
             const summarizerPrompt = await routeToPrompt('summarizer', conversationId, this.storage);
 
             // Send the request to the summarizer
+            console.log(`📋 DELEGATION: Sending request to Summarizer Agent...`);
             const response = await summarizerPrompt.send(userRequest);
 
-            console.log(`📋 Summarizer Agent completed task`);
+            console.log(`📋 DELEGATION: Summarizer Agent completed task. Response length: ${response.content?.length || 0}`);
             return response.content;
 
         } catch (error) {
