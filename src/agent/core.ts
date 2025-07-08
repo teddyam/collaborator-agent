@@ -52,12 +52,16 @@ export class CorePromptManager implements PromptManager {
     const newMessage = { 
       role, 
       content,
-      name: name || (role === 'user' ? 'Unknown User' : 'Assistant')
+      name: name || (role === 'user' ? 'Unknown User' : 'Assistant'),
+      activity_id: activity?.id || undefined // Store Teams activity ID for deep linking
     };
     messages.push(newMessage);
     this.conversationMessages.set(conversationKey, messages);
     
     console.log(`📝 Added ${role} message from "${newMessage.name}" to tracking for ${conversationKey} (total: ${messages.length})`);
+    if (newMessage.activity_id) {
+      console.log(`🔗 Activity ID stored for deep linking: ${newMessage.activity_id}`);
+    }
     
     // Store or update activity context for better chat type detection
     if (activity) {
@@ -115,8 +119,8 @@ export class CorePromptManager implements PromptManager {
   
   createMockDatabase(conversationId: string = 'mock-conversation'): void {
     // Use the helper function to insert messages with custom timestamps
-    const insertMessageFn = (convId: string, role: string, content: string, timestamp: string, name?: string) => {
-      storage.insertMessageWithTimestamp(convId, role, content, timestamp, name);
+    const insertMessageFn = (convId: string, role: string, content: string, timestamp: string, name?: string, activityId?: string) => {
+      storage.insertMessageWithTimestamp(convId, role, content, timestamp, name, activityId);
     };
     
     // Create mock database using the external function
