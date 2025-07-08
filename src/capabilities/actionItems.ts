@@ -85,12 +85,34 @@ const GET_CHAT_MEMBERS_SCHEMA = {
 
 /**
  * Creates a specialized action items prompt with function tools for managing action items
+ * Handles both group conversations and personal DMs
  */
-export function createActionItemsPrompt(conversationId: string, storage: SqliteKVStore, availableMembers: string[] = []): ChatPrompt {
+export function createActionItemsPrompt(
+  conversationId: string, 
+  storage: SqliteKVStore, 
+  availableMembers: Array<{name: string, id: string}> = [], 
+  isPersonalChat: boolean = false,
+  currentUserId?: string,
+  currentUserName?: string
+): ChatPrompt {
   const actionItemsModelConfig = getModelConfig('actionItems');
   
+  // Adjust instructions based on conversation type
+  const instructions = isPersonalChat 
+    ? `You are a personal action items assistant for ${currentUserName || 'the user'}. 
+       
+       Your role is to help them:
+       - View their personal action items assigned to them across all conversations
+       - Update the status of their action items  
+       - Get summaries of their workload
+       - Filter action items by status, priority, or due date
+       
+       This is a personal 1:1 conversation, so focus on THEIR action items only.
+       Be helpful, concise, and focused on their personal productivity.`
+    : ACTION_ITEMS_PROMPT;
+  
   const prompt = new ChatPrompt({
-    instructions: ACTION_ITEMS_PROMPT,
+    instructions,
     model: new OpenAIChatModel({
       model: actionItemsModelConfig.model,
       apiKey: actionItemsModelConfig.apiKey,
@@ -135,11 +157,28 @@ export function createActionItemsPrompt(conversationId: string, storage: SqliteK
     console.log(`✅ FUNCTION CALL: create_action_item - "${args.title}" assigned to ${args.assigned_to}`);
     
     try {
+      // Find the user ID for the assigned person
+      let assignedToId: string | undefined;
+      if (isPersonalChat && currentUserId) {
+        // In personal chat, assign to the current user
+        assignedToId = currentUserId;
+      } else {
+        // In group chat, find the user ID from available members
+        const assignedMember = availableMembers.find(member => 
+          member.name === args.assigned_to || 
+          member.name.toLowerCase() === args.assigned_to.toLowerCase()
+        );
+        assignedToId = assignedMember?.id;
+      }
+      
+      console.log(`🔍 Found user ID for "${args.assigned_to}": ${assignedToId || 'Not found'}`);
+      
       const actionItem = storage.createActionItem({
         conversation_id: conversationId,
         title: args.title,
         description: args.description,
         assigned_to: args.assigned_to,
+        assigned_to_id: assignedToId, // Now properly setting the user ID
         assigned_by: 'AI Action Items Agent',
         status: 'pending',
         priority: args.priority,
@@ -174,19 +213,27 @@ export function createActionItemsPrompt(conversationId: string, storage: SqliteK
     
     let actionItems: ActionItem[];
     
-    if (args.assigned_to && args.assigned_to !== 'all') {
-      // Get action items for specific user
-      actionItems = storage.getActionItemsForUser(args.assigned_to, args.status);
+    if (isPersonalChat && currentUserId) {
+      // In personal chat, only show the user's own action items across all conversations
+      actionItems = storage.getActionItemsByUserId(currentUserId, args.status);
+      console.log(`👤 Personal chat: Retrieved ${actionItems.length} action items for user ${currentUserName}`);
     } else {
-      // Get all action items for this conversation
-      actionItems = storage.getActionItemsByConversation(conversationId);
-      if (args.status) {
-        actionItems = actionItems.filter(item => item.status === args.status);
+      // In group chat, handle normal conversation-based logic
+      if (args.assigned_to && args.assigned_to !== 'all') {
+        // Get action items for specific user
+        actionItems = storage.getActionItemsForUser(args.assigned_to, args.status);
+      } else {
+        // Get all action items for this conversation
+        actionItems = storage.getActionItemsByConversation(conversationId);
+        if (args.status) {
+          actionItems = actionItems.filter(item => item.status === args.status);
+        }
       }
     }
     
     return JSON.stringify({
       status: 'success',
+      conversation_type: isPersonalChat ? 'personal' : 'group',
       filters: args,
       action_items: actionItems.map(item => ({
         id: item.id,
@@ -198,7 +245,8 @@ export function createActionItemsPrompt(conversationId: string, storage: SqliteK
         priority: item.priority,
         due_date: item.due_date,
         created_at: item.created_at,
-        updated_at: item.updated_at
+        updated_at: item.updated_at,
+        conversation_id: isPersonalChat ? item.conversation_id : undefined // Show source conversation in personal view
       })),
       count: actionItems.length
     });
@@ -242,15 +290,17 @@ export function createActionItemsPrompt(conversationId: string, storage: SqliteK
 /**
  * Helper function to get conversation participants using Teams API
  */
-export async function getConversationParticipantsFromAPI(api: any, conversationId: string): Promise<string[]> {
+export async function getConversationParticipantsFromAPI(api: any, conversationId: string): Promise<Array<{name: string, id: string}>> {
   try {
     console.log(`👥 Fetching conversation members from Teams API for conversation: ${conversationId}`);
     const members = await api.conversations.members(conversationId).get();
     
     const participants = members.map((member: any) => {
       // Try different name fields that might be available
-      return member.name || member.givenName || member.displayName || member.userPrincipalName || 'Unknown Member';
-    }).filter((name: string) => name !== 'Unknown Member');
+      const name = member.name || member.givenName || member.displayName || member.userPrincipalName || 'Unknown Member';
+      const id = member.id || member.aadObjectId || member.userId || 'unknown';
+      return { name, id };
+    }).filter((participant: any) => participant.name !== 'Unknown Member');
     
     console.log(`👥 Found ${participants.length} participants from Teams API:`, participants);
     return participants;

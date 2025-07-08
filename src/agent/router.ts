@@ -4,7 +4,7 @@ import { createSummarizerPrompt } from '../capabilities/summarize';
 import { createActionItemsPrompt } from '../capabilities/actionItems';
 
 // Router that provides specific prompts for different agent types
-export async function routeToPrompt(agentType: string, conversationId: string, storage: SqliteKVStore, participants: string[] = []): Promise<ChatPrompt> {
+export async function routeToPrompt(agentType: string, conversationId: string, storage: SqliteKVStore, participants: Array<{name: string, id: string}> = []): Promise<ChatPrompt> {
   console.log(`🔀 Routing to ${agentType} agent for conversation: ${conversationId}`);
   
   switch (agentType.toLowerCase()) {

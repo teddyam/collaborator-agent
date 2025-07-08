@@ -33,6 +33,9 @@ export async function handleDebugCommand(text: string, conversationKey: string):
     case 'help.debug':
       return handleDebugHelp();
     
+    case 'personal.actions':
+      return handlePersonalActionItemsDebug(conversationKey);
+    
     default:
       return { isDebugCommand: false };
   }
@@ -124,7 +127,8 @@ function handleDebugHelp(): DebugResponse {
     `🧹 **\`clear.convo\`** - Clear conversation messages and history\n` +
     `📋 **\`action.items\`** - Show action items debug info\n` +
     `🗑️ **\`clear.actions\`** - Clear all action items for this conversation\n` +
-    `❓ **\`help.debug\`** - Show this help message\n\n` +
+    `❓ **\`help.debug\`** - Show this help message\n` +
+    `👤 **\`personal.actions\`** - Show personal action items debug info\n\n` +
     `**Usage:** Simply type any command in the chat to execute it.\n\n` +
     `💡 **Note:** Debug commands work in any conversation and only affect the current chat.`;
 
@@ -143,7 +147,8 @@ export function getDebugCommands(): string[] {
     'clear.convo', 
     'action.items',
     'clear.actions',
-    'help.debug'
+    'help.debug',
+    'personal.actions'
   ];
 }
 
@@ -153,4 +158,58 @@ export function getDebugCommands(): string[] {
 export function isDebugCommand(text: string): boolean {
   const trimmedText = text?.trim();
   return getDebugCommands().includes(trimmedText);
+}
+
+/**
+ * Show personal action items debug information for a specific user
+ */
+function handlePersonalActionItemsDebug(_conversationKey: string): DebugResponse {
+  const storage = promptManager.getStorage();
+  
+  // Get all action items across all conversations to show user IDs
+  const allActionItems = storage.getAllActionItems();
+  
+  let response = `👤 **Personal Action Items Debug:**\n\n`;
+  
+  if (allActionItems.length > 0) {
+    response += `**All Action Items Across All Conversations (${allActionItems.length}):**\n`;
+    allActionItems.forEach(item => {
+      const statusEmoji = item.status === 'completed' ? '✅' : 
+                         item.status === 'in_progress' ? '🔄' : 
+                         item.status === 'cancelled' ? '❌' : '⏳';
+      const priorityEmoji = item.priority === 'urgent' ? '🔥' : 
+                           item.priority === 'high' ? '⚡' : 
+                           item.priority === 'medium' ? '📍' : '🔹';
+      
+      response += `\n${statusEmoji} **#${item.id}** ${priorityEmoji} ${item.title}\n`;
+      response += `   👤 Assigned to: ${item.assigned_to}\n`;
+      response += `   🆔 User ID: ${item.assigned_to_id || 'N/A'}\n`;
+      response += `   📝 ${item.description}\n`;
+      response += `   📅 Created: ${new Date(item.created_at).toLocaleDateString()}\n`;
+      response += `   💬 Conversation: ${item.conversation_id}\n`;
+      if (item.due_date) {
+        response += `   ⏰ Due: ${new Date(item.due_date).toLocaleDateString()}\n`;
+      }
+    });
+    
+    // Show breakdown by user ID
+    response += `\n**Breakdown by User ID:**\n`;
+    const userGroups = allActionItems.reduce((groups, item) => {
+      const userId = item.assigned_to_id || 'NO_ID';
+      if (!groups[userId]) groups[userId] = [];
+      groups[userId].push(item);
+      return groups;
+    }, {} as Record<string, typeof allActionItems>);
+    
+    Object.entries(userGroups).forEach(([userId, items]) => {
+      response += `- **${userId}**: ${items.length} action items (${items[0]?.assigned_to || 'Unknown'})\n`;
+    });
+  } else {
+    response += `**No action items found across all conversations.**\n`;
+  }
+  
+  return {
+    isDebugCommand: true,
+    response
+  };
 }

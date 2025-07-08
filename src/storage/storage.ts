@@ -18,7 +18,9 @@ export interface ActionItem {
   title: string;
   description: string;
   assigned_to: string;
+  assigned_to_id?: string; // User ID for direct lookup
   assigned_by: string; // Who identified/assigned this action item
+  assigned_by_id?: string; // User ID of who assigned it
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   due_date?: string; // ISO date string
@@ -84,6 +86,21 @@ export class SqliteKVStore {
       console.log(`📝 'name' column already exists in messages table`);
     }
 
+    // Add user ID columns to existing action_items table (migration)
+    try {
+      this.db.exec(`ALTER TABLE action_items ADD COLUMN assigned_to_id TEXT NULL`);
+      console.log(`🔄 Added 'assigned_to_id' column to existing action_items table`);
+    } catch (error) {
+      console.log(`📝 'assigned_to_id' column already exists in action_items table`);
+    }
+
+    try {
+      this.db.exec(`ALTER TABLE action_items ADD COLUMN assigned_by_id TEXT NULL`);
+      console.log(`🔄 Added 'assigned_by_id' column to existing action_items table`);
+    } catch (error) {
+      console.log(`📝 'assigned_by_id' column already exists in action_items table`);
+    }
+
     // Create indexes for better query performance
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)
@@ -100,6 +117,10 @@ export class SqliteKVStore {
     
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_action_items_assigned_to ON action_items(assigned_to)
+    `);
+    
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_action_items_assigned_to_id ON action_items(assigned_to_id)
     `);
     
     this.db.exec(`
@@ -474,9 +495,9 @@ export class SqliteKVStore {
     try {
       const stmt = this.db.prepare(`
         INSERT INTO action_items (
-          conversation_id, title, description, assigned_to, assigned_by, 
+          conversation_id, title, description, assigned_to, assigned_to_id, assigned_by, assigned_by_id,
           status, priority, due_date, source_message_ids
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
       const result = stmt.run(
@@ -484,7 +505,9 @@ export class SqliteKVStore {
         actionItem.title,
         actionItem.description,
         actionItem.assigned_to,
+        actionItem.assigned_to_id || null,
         actionItem.assigned_by,
+        actionItem.assigned_by_id || null,
         actionItem.status,
         actionItem.priority,
         actionItem.due_date || null,
@@ -492,7 +515,7 @@ export class SqliteKVStore {
       );
 
       const newActionItem = this.getActionItemById(result.lastInsertRowid as number);
-      console.log(`✅ Created action item #${result.lastInsertRowid}: "${actionItem.title}" for ${actionItem.assigned_to}`);
+      console.log(`✅ Created action item #${result.lastInsertRowid}: "${actionItem.title}" for ${actionItem.assigned_to}${actionItem.assigned_to_id ? ` (ID: ${actionItem.assigned_to_id})` : ''}`);
       return newActionItem!;
     } catch (error) {
       console.error(`❌ Error creating action item:`, error);
@@ -548,6 +571,29 @@ export class SqliteKVStore {
       return rows;
     } catch (error) {
       console.error(`❌ Error getting action items for user ${assignedTo}:`, error);
+      return [];
+    }
+  }
+
+  // Get action items assigned to a specific user by ID (for personal DMs)
+  getActionItemsByUserId(userId: string, status?: string): ActionItem[] {
+    try {
+      let sql = 'SELECT * FROM action_items WHERE assigned_to_id = ?';
+      const params: any[] = [userId];
+      
+      if (status) {
+        sql += ' AND status = ?';
+        params.push(status);
+      }
+      
+      sql += ' ORDER BY priority DESC, due_date ASC, created_at DESC';
+      
+      const stmt = this.db.prepare(sql);
+      const rows = stmt.all(...params) as ActionItem[];
+      console.log(`🔍 Retrieved ${rows.length} action items for user ID: ${userId}${status ? ` (status: ${status})` : ''}`);
+      return rows;
+    } catch (error) {
+      console.error(`❌ Error getting action items for user ID ${userId}:`, error);
       return [];
     }
   }
@@ -623,6 +669,20 @@ export class SqliteKVStore {
     } catch (error) {
       console.error(`❌ Error getting action items summary:`, error);
       return { error: 'Failed to get summary' };
+    }
+  }
+
+  // Get all action items across all conversations (for debugging)
+  getAllActionItems(): ActionItem[] {
+    try {
+      const sql = 'SELECT * FROM action_items ORDER BY created_at DESC';
+      const stmt = this.db.prepare(sql);
+      const rows = stmt.all() as ActionItem[];
+      console.log(`🔍 Retrieved ${rows.length} action items across all conversations`);
+      return rows;
+    } catch (error) {
+      console.error(`❌ Error getting all action items:`, error);
+      return [];
     }
   }
 }

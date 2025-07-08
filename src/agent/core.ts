@@ -9,6 +9,7 @@ const storage = new SqliteKVStore();
 export interface PromptManager {
   processUserRequest(conversationKey: string, userRequest: string): Promise<string>;
   processUserRequestWithAPI(conversationKey: string, userRequest: string, api: any): Promise<string>;
+  processUserRequestWithPersonalMode(conversationKey: string, userRequest: string, api: any, userId: string, userName: string): Promise<string>;
   clearConversation(conversationKey: string): void;
   getMessagesWithTimestamps(conversationKey: string): MessageRecord[];
   getMessagesByTimeRange(conversationKey: string, startTime?: string, endTime?: string): MessageRecord[];
@@ -37,6 +38,12 @@ export class CorePromptManager implements PromptManager {
   async processUserRequestWithAPI(conversationKey: string, userRequest: string, api: any): Promise<string> {
     console.log(`🎯 Processing user request with API: "${userRequest}" for conversation: ${conversationKey}`);
     return await this.manager.processRequestWithAPI(userRequest, conversationKey, api);
+  }
+
+  // Main entry point for processing user requests with personal mode (for 1:1 chats)
+  async processUserRequestWithPersonalMode(conversationKey: string, userRequest: string, api: any, userId: string, userName: string): Promise<string> {
+    console.log(`🎯 Processing user request in personal mode: "${userRequest}" for user: ${userName} (${userId})`);
+    return await this.manager.processRequestWithPersonalMode(userRequest, conversationKey, api, userId, userName);
   }
 
   // Add a message to our tracking (called when user sends or AI responds)
