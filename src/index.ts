@@ -3,61 +3,10 @@ import { DevtoolsPlugin } from '@microsoft/teams.dev';
 import { promptManager } from './agent/core';
 import { validateEnvironment, logModelConfigs } from './utils/config';
 import { handleDebugCommand } from './utils/debug';
-import { IMessageActivity } from '@microsoft/teams.api';
 
 const app = new App({
   plugins: [new DevtoolsPlugin()],
 });
-
-export function createQuotedAdaptiveCard(activity: IMessageActivity): any {
-  if (!activity.id || !activity.conversation?.id) {
-    throw new Error("Missing activity.id or conversation.id");
-  }
-
-  const messageText = activity.text ?? "<no message text>";
-  const senderName = activity.from?.name ?? "Unknown";
-  const timestamp = activity.timestamp
-    ? new Date(activity.timestamp).toLocaleString()
-    : "";
-
-  // Build deep link with chat context
-  const chatId = activity.conversation.id;
-  const messageId = activity.id;
-  const contextParam = encodeURIComponent(JSON.stringify({ contextType: "chat" }));
-  const deepLink = `https://teams.microsoft.com/l/message/${encodeURIComponent(chatId)}/${messageId}?context=${contextParam}`;
-
-  // Return Adaptive Card JSON
-  return {
-    type: "AdaptiveCard",
-    version: "1.4",
-    body: [
-      {
-        type: "TextBlock",
-        text: `“${messageText}”`,
-        wrap: true,
-        weight: "Bolder",
-        color: "Accent",
-        spacing: "Medium"
-      },
-      {
-        type: "TextBlock",
-        text: `— ${senderName}${timestamp ? `, ${timestamp}` : ""}`,
-        isSubtle: true,
-        wrap: true,
-        spacing: "None"
-      }
-    ],
-    actions: [
-      {
-        type: "Action.OpenUrl",
-        title: "View Original Message",
-        url: deepLink
-      }
-    ],
-    $schema: "http://adaptivecards.io/schemas/adaptive-card.json"
-  };
-}
-
 
 // Handle all messages for tracking and debug commands
 app.on('message', async ({ send, activity, next }) => {
@@ -77,9 +26,7 @@ app.on('message', async ({ send, activity, next }) => {
     }
     return;
   }
-  const card = createQuotedAdaptiveCard(activity);
-  await send(card);
-
+  
   // If this is a personal chat, always route to the manager for full conversational experience
   if (isPersonalChat && activity.text && activity.text.trim() !== '') {
     console.log('🔍 Personal chat detected - routing to manager with personal action items support');

@@ -4,3 +4,5 @@
 env/
 # Ignore node_modules
 node_modules/
+
+src/storage/conversations.db
