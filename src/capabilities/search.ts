@@ -3,32 +3,7 @@ import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { SqliteKVStore, MessageRecord } from '../storage/storage';
 import { getModelConfig } from '../utils/config';
 import { IMessageActivity } from '@microsoft/teams.api';
-
-// Search prompt instructions
-const SEARCH_PROMPT = `You are a conversation search assistant. Your role is to help users find specific conversations or messages from their chat history.
-
-You can search through message history to find:
-- Conversations between specific people
-- Messages about specific topics
-- Messages from specific time periods (with proper timezone handling)
-- Messages containing specific keywords
-
-IMPORTANT TIMEZONE HANDLING:
-- When users specify times like "4 to 5pm", "between 2 and 3pm", these are interpreted as their LOCAL time
-- The system automatically converts local times to UTC for database queries
-- Uses the user's actual timezone from Teams activity data (e.g., "America/New_York", "Europe/London")
-- Relative times like "today", "yesterday", "this week" are also handled in the user's local timezone
-- Examples: "4 to 5pm" means 4-5pm in the user's timezone, not UTC
-
-When a user asks you to find something, use the search_messages function to search the database and return relevant results with deep links to the original messages.
-
-When you find matching messages, present them in a helpful format:
-1. Start with a brief summary of what was found
-2. Present the results with clear context about when they occurred and who was involved
-3. If adaptive cards are available, mention that users can click "View Original Message" to see the full conversation
-4. If no results are found, suggest alternative search terms or broader criteria
-
-Be helpful and conversational in your responses. Focus on helping users find the specific information they're looking for.`;
+import { SEARCH_PROMPT } from '../agent/instructions';
 
 // Function schemas for search operations
 const SEARCH_MESSAGES_SCHEMA = {
@@ -473,11 +448,11 @@ export function createSearchPrompt(
     );
     
     if (matchingMessages.length === 0) {
-      return JSON.stringify({
+      return {
         status: 'no_results',
         message: 'No messages found matching your search criteria.',
         search_criteria: { keywords, participants, start_time: actualStartTime, end_time: actualEndTime }
-      });
+      };
     }
     
     // Group messages by time periods for better context
@@ -493,7 +468,7 @@ export function createSearchPrompt(
       }
     }).filter(card => card !== null);
     
-    return JSON.stringify({
+    return {
       status: 'success',
       total_results: matchingMessages.length,
       search_criteria: { keywords, participants, start_time: actualStartTime, end_time: actualEndTime },
@@ -510,7 +485,7 @@ export function createSearchPrompt(
           content_length: msg.content.length
         }))
       }))
-    });
+    };
   });
   
   return prompt;
