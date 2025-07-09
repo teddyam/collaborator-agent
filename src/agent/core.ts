@@ -1,15 +1,14 @@
 import { SqliteKVStore, MessageRecord } from '../storage/storage';
 import { createMockDatabase } from '../mock/mockMessages';
 import { USE_MOCK_DATA, DEFAULT_MOCK_CONVERSATION } from '../utils/constants';
-import { ManagerPrompt } from './manager';
+import { ManagerPrompt, ManagerResult } from './manager';
 
 // Initialize storage
 const storage = new SqliteKVStore();
 
 export interface PromptManager {
-  processUserRequest(conversationKey: string, userRequest: string): Promise<string>;
-  processUserRequestWithAPI(conversationKey: string, userRequest: string, api: any): Promise<string>;
-  processUserRequestWithPersonalMode(conversationKey: string, userRequest: string, api: any, userId: string, userName: string): Promise<string>;
+  processUserRequest(conversationKey: string, userRequest: string, api: any, userTimezone?: string): Promise<ManagerResult>;
+  processUserRequestWithPersonalMode(conversationKey: string, userRequest: string, api: any, userId: string, userName: string, userTimezone?: string): Promise<ManagerResult>;
   clearConversation(conversationKey: string): void;
   getMessagesWithTimestamps(conversationKey: string): MessageRecord[];
   getMessagesByTimeRange(conversationKey: string, startTime?: string, endTime?: string): MessageRecord[];
@@ -28,22 +27,14 @@ export class CorePromptManager implements PromptManager {
     this.manager = new ManagerPrompt(storage);
   }
 
-  // Main entry point for processing user requests
-  async processUserRequest(conversationKey: string, userRequest: string): Promise<string> {
-    console.log(`🎯 Processing user request: "${userRequest}" for conversation: ${conversationKey}`);
-    return await this.manager.processRequest(userRequest, conversationKey);
-  }
-
   // Main entry point for processing user requests with API access
-  async processUserRequestWithAPI(conversationKey: string, userRequest: string, api: any): Promise<string> {
-    console.log(`🎯 Processing user request with API: "${userRequest}" for conversation: ${conversationKey}`);
-    return await this.manager.processRequestWithAPI(userRequest, conversationKey, api);
+  async processUserRequest(conversationKey: string, userRequest: string, api: any, userTimezone?: string): Promise<ManagerResult> {
+    return await this.manager.processRequestWithAPI(userRequest, conversationKey, api, userTimezone);
   }
 
   // Main entry point for processing user requests with personal mode (for 1:1 chats)
-  async processUserRequestWithPersonalMode(conversationKey: string, userRequest: string, api: any, userId: string, userName: string): Promise<string> {
-    console.log(`🎯 Processing user request in personal mode: "${userRequest}" for user: ${userName} (${userId})`);
-    return await this.manager.processRequestWithPersonalMode(userRequest, conversationKey, api, userId, userName);
+  async processUserRequestWithPersonalMode(conversationKey: string, userRequest: string, api: any, userId: string, userName: string, userTimezone?: string): Promise<ManagerResult> {
+    return await this.manager.processRequestWithPersonalMode(userRequest, conversationKey, api, userId, userName, userTimezone);
   }
 
   // Add a message to our tracking (called when user sends or AI responds)
