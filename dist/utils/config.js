@@ -43,8 +43,8 @@ exports.AI_MODELS = {
     },
 };
 // Helper function to get model config for a specific agent
-function getModelConfig(agentType = 'default') {
-    switch (agentType.toLowerCase()) {
+function getModelConfig(capabilityType = 'default') {
+    switch (capabilityType.toLowerCase()) {
         case 'manager':
             return exports.AI_MODELS.MANAGER;
         case 'summarizer':

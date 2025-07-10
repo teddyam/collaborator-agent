@@ -11,6 +11,6 @@ export declare const AI_MODELS: {
     SEARCH: ModelConfig;
     DEFAULT: ModelConfig;
 };
-export declare function getModelConfig(agentType?: 'manager' | 'summarizer' | 'actionItems' | 'search' | 'default'): ModelConfig;
+export declare function getModelConfig(capabilityType?: 'manager' | 'summarizer' | 'actionItems' | 'search' | 'default'): ModelConfig;
 export declare function validateEnvironment(): void;
 export declare function logModelConfigs(): void;

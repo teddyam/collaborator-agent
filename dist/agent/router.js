@@ -1,14 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.routeToPrompt = routeToPrompt;
-exports.createAgentRouter = createAgentRouter;
+exports.createCapabilityRouter = createCapabilityRouter;
 const summarize_1 = require("../capabilities/summarize");
 const actionItems_1 = require("../capabilities/actionItems");
 const search_1 = require("../capabilities/search");
 // Router that provides specific prompts for different agent types
-async function routeToPrompt(agentType, conversationId, storage, participants = [], userTimezone, adaptiveCardsArray) {
-    console.log(`🔀 Routing to ${agentType} agent for conversation: ${conversationId}`);
-    switch (agentType.toLowerCase()) {
+async function routeToPrompt(capabilityType, conversationId, storage, participants = [], userTimezone, adaptiveCardsArray) {
+    console.log(`🔀 Routing to ${capabilityType} agent for conversation: ${conversationId}`);
+    switch (capabilityType.toLowerCase()) {
         case 'summarizer':
             return (0, summarize_1.createSummarizerPrompt)(conversationId, userTimezone);
         case 'actionitems':
@@ -17,20 +17,20 @@ async function routeToPrompt(agentType, conversationId, storage, participants = 
         case 'search':
             return (0, search_1.createSearchPrompt)(conversationId, userTimezone, adaptiveCardsArray);
         default:
-            console.warn(`⚠️ Unknown agent type: ${agentType}, defaulting to summarizer`);
+            console.warn(`⚠️ Unknown agent type: ${capabilityType}, defaulting to summarizer`);
             return (0, summarize_1.createSummarizerPrompt)(conversationId, userTimezone);
     }
 }
 // Factory function for creating new agent types
-function createAgentRouter() {
+function createCapabilityRouter() {
     const routes = new Map();
     routes.set('summarizer', summarize_1.createSummarizerPrompt);
     return {
-        addRoute: (agentType, factory) => {
-            routes.set(agentType.toLowerCase(), factory);
+        addRoute: (capabilityType, factory) => {
+            routes.set(capabilityType.toLowerCase(), factory);
         },
-        route: async (agentType, conversationId, userTimezone) => {
-            const factory = routes.get(agentType.toLowerCase()) || routes.get('summarizer');
+        route: async (capabilityType, conversationId, userTimezone) => {
+            const factory = routes.get(capabilityType.toLowerCase()) || routes.get('summarizer');
             return factory(conversationId, userTimezone);
         }
     };

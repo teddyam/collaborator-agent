@@ -88,6 +88,7 @@ app.on('message', async ({ send, activity, next }) => {
 
   // If this is a personal chat, always route to the manager for full conversational experience
   if (isPersonalChat && activity.text && activity.text.trim() !== '') {
+    await send({ type: 'typing' });
     const userId = activity.from.id;
     const userName = activity.from.name || 'User';
 
@@ -105,7 +106,7 @@ app.on('message', async ({ send, activity, next }) => {
 
     if (result.response && result.response.trim() !== '') {
       const sentMessageId = await sendMessageWithCards(send, result.response, result.adaptiveCards);
-      feedbackStorage.storeDelegatedAgent(sentMessageId, result.delegatedAgent);
+      feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
       addMessageToTracking(conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
     } else {
       await send({ type: 'message', text: 'Hello! I can help you with conversation summaries, action item management, and general assistance. What would you like help with?' });
@@ -123,6 +124,7 @@ app.on('message', async ({ send, activity, next }) => {
 });
 
 app.on('mention', async ({ send, activity, api }) => {
+  await send({ type: 'typing' });
   const conversationKey = `${activity.conversation.id}`;
 
   if (activity.type === 'message' && activity.text && activity.text.trim() !== '') {
@@ -141,7 +143,7 @@ app.on('mention', async ({ send, activity, api }) => {
     if (result.response && result.response.trim() !== '') {
       const sentMessageId = await sendMessageWithCards(send, result.response, result.adaptiveCards);
 
-      feedbackStorage.storeDelegatedAgent(sentMessageId, result.delegatedAgent);
+      feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
 
       addMessageToTracking(conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
     } else {
