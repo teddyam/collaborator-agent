@@ -15,7 +15,6 @@ async function sendMessageWithCards(send: any, text: string, adaptiveCards?: any
 
   // If we have adaptive cards, add them as attachments
   if (adaptiveCards && adaptiveCards.length > 0) {
-    // Teams AI SDK v2 supports attachments on MessageActivity
     for (const card of adaptiveCards) {
       messageActivity.addAttachments({
         contentType: 'application/vnd.microsoft.card.adaptive',
@@ -35,7 +34,6 @@ const app = new App({
 // Initialize feedback storage (reuse the same storage instance from promptManager)
 const feedbackStorage = promptManager.getStorage();
 
-// Handle feedback submissions
 app.on('message.submit.feedback', async ({ activity, log }) => {
   try {
     const { reaction, feedback: feedbackJson } = activity.value.actionValue;
@@ -47,22 +45,16 @@ app.on('message.submit.feedback', async ({ activity, log }) => {
 
     console.log(`👍 Received feedback for message ${activity.replyToId}: ${reaction}`, feedbackJson);
 
-    // Check if feedback record exists (it should since we store delegated agent info when sending)
     let existingFeedback = feedbackStorage.getFeedbackByMessageId(activity.replyToId);
     if (!existingFeedback) {
-      // If no record exists, initialize without delegated agent info (fallback)
       feedbackStorage.initializeFeedbackRecord(activity.replyToId);
       console.log(`📝 Initialized feedback record for message ${activity.replyToId} (no prior delegated agent info)`);
     }
-    
-    // Update feedback in storage
+
     const success = feedbackStorage.updateFeedback(activity.replyToId, reaction, feedbackJson);
-    
+
     if (success) {
       console.log(`✅ Successfully recorded feedback for message ${activity.replyToId}`);
-      
-      // Optionally send a confirmation response
-      // await send({ type: 'message', text: `Thank you for your feedback! 👍` });
     } else {
       log.warn(`Failed to record feedback for message ${activity.replyToId}`);
     }
@@ -73,14 +65,13 @@ app.on('message.submit.feedback', async ({ activity, log }) => {
   }
 });
 
-// Handle all messages for tracking and debug commands
 app.on('message', async ({ send, activity, next }) => {
   const conversationKey = `${activity.conversation.id}`;
   const isPersonalChat = activity.conversation.conversationType === 'personal';
 
   const debugResult = await handleDebugCommand(activity.text || '', conversationKey);
 
-  console.log(new Date().toISOString().split('T')[0]); // YYYY-MM-DD format);
+  console.log(new Date().toISOString().split('T')[0]);
   console.log(activity);
   if (debugResult.isDebugCommand) {
     if (debugResult.response) {
@@ -91,28 +82,24 @@ app.on('message', async ({ send, activity, next }) => {
     }
     return;
   }
-  
+
   // If this is a personal chat, always route to the manager for full conversational experience
   if (isPersonalChat && activity.text && activity.text.trim() !== '') {
     console.log('🔍 Personal chat detected - routing to manager with personal action items support');
 
     const userId = activity.from.id;
     const userName = activity.from.name || 'User';
-    
-    // Extract timezone from Teams activity (cast to any to access localTimezone)
-    const userTimezone = (activity as any).localTimezone;
+
+   const userTimezone = (activity as any).localTimezone;
     if (userTimezone) {
       console.log(`🕒 Detected user timezone: ${userTimezone}`);
     }
-
-    // Track the user message first
     promptManager.addMessageToTracking(conversationKey, 'user', activity.text, activity, userName);
 
-    // Use the manager to process the request, but enable personal mode for action items
     const result = await promptManager.processUserRequestWithPersonalMode(
       conversationKey,
       activity.text,
-      null, // no API in personal chat
+      null,
       userId,
       userName,
       userTimezone
@@ -120,20 +107,15 @@ app.on('message', async ({ send, activity, next }) => {
 
     if (result.response && result.response.trim() !== '') {
       const sentMessageId = await sendMessageWithCards(send, result.response, result.adaptiveCards);
-      
-      // Store delegated agent info for potential feedback
-      feedbackStorage.storeDelegatedAgent(sentMessageId, result.delegatedAgent);
-      
-      console.log(`🤖 Personal chat response sent with feedback enabled: ${sentMessageId} (delegated to: ${result.delegatedAgent || 'direct'})${result.adaptiveCards ? ` with ${result.adaptiveCards.length} cards` : ''}`);
 
-      // Track AI response
+      feedbackStorage.storeDelegatedAgent(sentMessageId, result.delegatedAgent);
+
+     
       promptManager.addMessageToTracking(conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
     } else {
       await send({ type: 'message', text: 'Hello! I can help you with conversation summaries, action item management, and general assistance. What would you like help with?' });
-      console.log('🤖 Personal chat fallback response sent');
     }
 
-    // Save messages to database
     await promptManager.saveMessagesDirectly(conversationKey);
     console.log('💾 Personal chat messages saved to database');
 
@@ -182,10 +164,10 @@ app.on('mention', async ({ send, activity, api }) => {
     // Always send a response when @mentioned
     if (result.response && result.response.trim() !== '') {
       const sentMessageId = await sendMessageWithCards(send, result.response, result.adaptiveCards);
-      
+
       // Store delegated agent info for potential feedback
       feedbackStorage.storeDelegatedAgent(sentMessageId, result.delegatedAgent);
-      
+
       console.log(`🤖 AI Response sent with feedback enabled: ${sentMessageId} (delegated to: ${result.delegatedAgent || 'direct'})${result.adaptiveCards ? ` with ${result.adaptiveCards.length} cards` : ''}`);
 
       // Track AI response
