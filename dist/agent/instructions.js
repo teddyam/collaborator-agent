@@ -1,9 +1,10 @@
+"use strict";
 // Prompt instructions for different agent functionalities
-
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SEARCH_PROMPT = exports.ACTION_ITEMS_PROMPT = exports.MANAGER_PROMPT = exports.SUMMARY_PROMPT = void 0;
 // Get current date once and reuse it
 const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-
-export const SUMMARY_PROMPT = `
+exports.SUMMARY_PROMPT = `
 You are the Summarizer capability of the Collaborator that specializes in analyzing conversations between groups of people.
 Your job is to retrieve and analyze conversation messages, then provide structured summaries with proper attribution.
 
@@ -50,8 +51,7 @@ This ensures summaries focus on recent, relevant conversation content.
 - Include participant names when attributing ideas or statements
 - Provide a brief overview if requested
 `;
-
-export const MANAGER_PROMPT = `
+exports.MANAGER_PROMPT = `
 You are a Manager that coordinates different specialized capabilities for the Collaborator - a Microsoft Teams collaboration bot.
 You are only activated when the bot is @mentioned in a conversation.
 Your role is to analyze user requests and determine which specialized capabilities are best suited to handle the query.
@@ -143,8 +143,7 @@ Examples:
 ❌ BAD: "I can help you with conversation summaries, action item management, and message search. What would you like assistance with?"
 ✅ GOOD: "That's an interesting topic! While I focus on helping teams with conversation analysis and task management, I'm happy to chat. Is there something specific about your team's work I can help with?"
 `;
-
-export const ACTION_ITEMS_PROMPT = `
+exports.ACTION_ITEMS_PROMPT = `
 You are the Action Items capability of the Collaborator that specializes in analyzing team conversations to identify, create, and manage action items.
 Your role is to help teams stay organized by tracking commitments, tasks, and follow-ups from their discussions.
 
@@ -200,8 +199,7 @@ When creating action items:
 - Suggest status updates based on conversation context
 - Be encouraging and supportive about task completion
 `;
-
-export const SEARCH_PROMPT = `
+exports.SEARCH_PROMPT = `
 You are the Search capability of the Collaborator. Your role is to help users find specific conversations or messages from their chat history.
 
 You can search through message history to find:
@@ -228,7 +226,6 @@ RESPONSE FORMAT:
 
 Be helpful and conversational in your responses. The user will see both your text response and interactive cards that let them jump to the original messages.
 `;
-
 // You can add more prompt instructions here as needed
 // Example:
 // export const CODE_REVIEW_PROMPT = `
@@ -241,3 +238,4 @@ Be helpful and conversational in your responses. The user will see both your tex
 //   Today's Date: ${currentDate}
 //   ...
 // `;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaW5zdHJ1Y3Rpb25zLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vc3JjL2FnZW50L2luc3RydWN0aW9ucy50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiO0FBQUEsMERBQTBEOzs7QUFFMUQscUNBQXFDO0FBQ3JDLE1BQU0sV0FBVyxHQUFHLElBQUksSUFBSSxFQUFFLENBQUMsV0FBVyxFQUFFLENBQUMsS0FBSyxDQUFDLEdBQUcsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsb0JBQW9CO0FBRW5FLFFBQUEsY0FBYyxHQUFHOzs7O2dCQUlkLFdBQVc7Ozs7Ozs7Ozs7Ozs7OztnQkFlWCxXQUFXOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Q0EyQjFCLENBQUM7QUFFVyxRQUFBLGNBQWMsR0FBRzs7Ozs7Z0JBS2QsV0FBVzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Q0FzRjFCLENBQUM7QUFFVyxRQUFBLG1CQUFtQixHQUFHOzs7O2dCQUluQixXQUFXOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Q0FtRDFCLENBQUM7QUFFVyxRQUFBLGFBQWEsR0FBRzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Q0EwQjVCLENBQUM7QUFFRixzREFBc0Q7QUFDdEQsV0FBVztBQUNYLHNDQUFzQztBQUN0Qyx1Q0FBdUM7QUFDdkMsaUNBQWlDO0FBQ2pDLFFBQVE7QUFDUixLQUFLO0FBQ0wsd0NBQXdDO0FBQ3hDLHlDQUF5QztBQUN6QyxpQ0FBaUM7QUFDakMsUUFBUTtBQUNSLEtBQUsifQ==

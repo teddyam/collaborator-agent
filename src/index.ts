@@ -5,6 +5,29 @@ import { promptManager } from './agent/core';
 import { validateEnvironment, logModelConfigs } from './utils/config';
 import { handleDebugCommand } from './utils/debug';
 
+/**
+ * Helper function to send a message with optional adaptive cards
+ */
+async function sendMessageWithCards(send: any, text: string, adaptiveCards?: any[]): Promise<string> {
+  const messageActivity = new MessageActivity(text)
+    .addAiGenerated()
+    .addFeedback();
+
+  // If we have adaptive cards, add them as attachments
+  if (adaptiveCards && adaptiveCards.length > 0) {
+    // Teams AI SDK v2 supports attachments on MessageActivity
+    for (const card of adaptiveCards) {
+      messageActivity.addAttachments({
+        contentType: 'application/vnd.microsoft.card.adaptive',
+        content: card
+      });
+    }
+  }
+
+  const { id: sentMessageId } = await send(messageActivity);
+  return sentMessageId;
+}
+
 const app = new App({
   plugins: [new DevtoolsPlugin()],
 });
@@ -55,9 +78,10 @@ app.on('message', async ({ send, activity, next }) => {
   const conversationKey = `${activity.conversation.id}`;
   const isPersonalChat = activity.conversation.conversationType === 'personal';
 
-  // Check for debug commands using centralized handler
   const debugResult = await handleDebugCommand(activity.text || '', conversationKey);
 
+  console.log(new Date().toISOString().split('T')[0]); // YYYY-MM-DD format);
+  console.log(activity);
   if (debugResult.isDebugCommand) {
     if (debugResult.response) {
       await send({
@@ -70,11 +94,16 @@ app.on('message', async ({ send, activity, next }) => {
   
   // If this is a personal chat, always route to the manager for full conversational experience
   if (isPersonalChat && activity.text && activity.text.trim() !== '') {
+    console.log('🔍 Personal chat detected - routing to manager with personal action items support');
+
     const userId = activity.from.id;
     const userName = activity.from.name || 'User';
     
     // Extract timezone from Teams activity (cast to any to access localTimezone)
     const userTimezone = (activity as any).localTimezone;
+    if (userTimezone) {
+      console.log(`🕒 Detected user timezone: ${userTimezone}`);
+    }
 
     // Track the user message first
     promptManager.addMessageToTracking(conversationKey, 'user', activity.text, activity, userName);
@@ -90,23 +119,23 @@ app.on('message', async ({ send, activity, next }) => {
     );
 
     if (result.response && result.response.trim() !== '') {
-      const { id: sentMessageId } = await send(
-        new MessageActivity(result.response)
-          .addAiGenerated()
-          .addFeedback()
-      );
+      const sentMessageId = await sendMessageWithCards(send, result.response, result.adaptiveCards);
       
       // Store delegated agent info for potential feedback
       feedbackStorage.storeDelegatedAgent(sentMessageId, result.delegatedAgent);
+      
+      console.log(`🤖 Personal chat response sent with feedback enabled: ${sentMessageId} (delegated to: ${result.delegatedAgent || 'direct'})${result.adaptiveCards ? ` with ${result.adaptiveCards.length} cards` : ''}`);
 
       // Track AI response
       promptManager.addMessageToTracking(conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
     } else {
       await send({ type: 'message', text: 'Hello! I can help you with conversation summaries, action item management, and general assistance. What would you like help with?' });
+      console.log('🤖 Personal chat fallback response sent');
     }
 
     // Save messages to database
     await promptManager.saveMessagesDirectly(conversationKey);
+    console.log('💾 Personal chat messages saved to database');
 
     return;
   }
@@ -117,12 +146,17 @@ app.on('message', async ({ send, activity, next }) => {
 
   // Save messages to database
   await promptManager.saveMessagesDirectly(conversationKey);
+  console.log('💾 Messages saved to database');
 
   await next();
 });
 
 app.on('mention', async ({ send, activity, api }) => {
   const conversationKey = `${activity.conversation.id}`;
+  console.log('🔍 Bot @mentioned - processing query with manager agent');
+
+  const members = await api.conversations.members(conversationKey).get();
+  console.log(members);
 
   if (activity.type === 'message' && activity.text && activity.text.trim() !== '') {
     // Check for debug commands first, even when @mentioned
@@ -131,28 +165,28 @@ app.on('mention', async ({ send, activity, api }) => {
     if (debugResult.isDebugCommand) {
       if (debugResult.response) {
         await send({ type: 'message', text: debugResult.response });
+        console.log('🛠️ Debug command executed via @mention:', activity.text.trim());
       }
       return;
     }
 
     // Extract timezone from Teams activity (cast to any to access localTimezone)
     const userTimezone = (activity as any).localTimezone;
+    if (userTimezone) {
+      console.log(`🕒 Detected user timezone: ${userTimezone}`);
+    }
 
     // Use the manager to process the request (now with API access)
     const result = await promptManager.processUserRequest(conversationKey, activity.text, api, userTimezone);
 
     // Always send a response when @mentioned
     if (result.response && result.response.trim() !== '') {
-      const { id: sentMessageId } = await send(
-        new MessageActivity(result.response)
-          .addAiGenerated()
-          .addFeedback()
-      );
+      const sentMessageId = await sendMessageWithCards(send, result.response, result.adaptiveCards);
       
       // Store delegated agent info for potential feedback
       feedbackStorage.storeDelegatedAgent(sentMessageId, result.delegatedAgent);
       
-      console.log(`🤖 AI Response sent with feedback enabled: ${sentMessageId} (delegated to: ${result.delegatedAgent || 'direct'})`);
+      console.log(`🤖 AI Response sent with feedback enabled: ${sentMessageId} (delegated to: ${result.delegatedAgent || 'direct'})${result.adaptiveCards ? ` with ${result.adaptiveCards.length} cards` : ''}`);
 
       // Track AI response
       promptManager.addMessageToTracking(conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
