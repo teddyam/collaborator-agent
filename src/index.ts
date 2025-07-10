@@ -85,15 +85,10 @@ app.on('message', async ({ send, activity, next }) => {
 
   // If this is a personal chat, always route to the manager for full conversational experience
   if (isPersonalChat && activity.text && activity.text.trim() !== '') {
-    console.log('🔍 Personal chat detected - routing to manager with personal action items support');
-
     const userId = activity.from.id;
     const userName = activity.from.name || 'User';
 
    const userTimezone = (activity as any).localTimezone;
-    if (userTimezone) {
-      console.log(`🕒 Detected user timezone: ${userTimezone}`);
-    }
     promptManager.addMessageToTracking(conversationKey, 'user', activity.text, activity, userName);
 
     const result = await promptManager.processUserRequestWithPersonalMode(
@@ -122,11 +117,9 @@ app.on('message', async ({ send, activity, next }) => {
     return;
   }
 
-  // Track all user messages for conversation history
   const userName = activity.from.name || 'user';
   promptManager.addMessageToTracking(conversationKey, 'user', activity.text, activity, userName);
 
-  // Save messages to database
   await promptManager.saveMessagesDirectly(conversationKey);
   console.log('💾 Messages saved to database');
 
@@ -141,9 +134,7 @@ app.on('mention', async ({ send, activity, api }) => {
   console.log(members);
 
   if (activity.type === 'message' && activity.text && activity.text.trim() !== '') {
-    // Check for debug commands first, even when @mentioned
     const debugResult = await handleDebugCommand(activity.text, conversationKey);
-
     if (debugResult.isDebugCommand) {
       if (debugResult.response) {
         await send({ type: 'message', text: debugResult.response });
@@ -152,42 +143,28 @@ app.on('mention', async ({ send, activity, api }) => {
       return;
     }
 
-    // Extract timezone from Teams activity (cast to any to access localTimezone)
     const userTimezone = (activity as any).localTimezone;
     if (userTimezone) {
       console.log(`🕒 Detected user timezone: ${userTimezone}`);
     }
 
-    // Use the manager to process the request (now with API access)
     const result = await promptManager.processUserRequest(conversationKey, activity.text, api, userTimezone);
 
-    // Always send a response when @mentioned
     if (result.response && result.response.trim() !== '') {
       const sentMessageId = await sendMessageWithCards(send, result.response, result.adaptiveCards);
 
-      // Store delegated agent info for potential feedback
       feedbackStorage.storeDelegatedAgent(sentMessageId, result.delegatedAgent);
 
-      console.log(`🤖 AI Response sent with feedback enabled: ${sentMessageId} (delegated to: ${result.delegatedAgent || 'direct'})${result.adaptiveCards ? ` with ${result.adaptiveCards.length} cards` : ''}`);
-
-      // Track AI response
       promptManager.addMessageToTracking(conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
     } else {
-      // Fallback response if manager returns empty
       await send({ type: 'message', text: 'I received your message but I\'m not sure how to help with that. I can help with conversation summaries and message analysis.' });
-      console.log('🤖 Fallback response sent');
     }
-
-    // Save messages including AI response
     await promptManager.saveMessagesDirectly(conversationKey);
-    console.log('💾 Messages saved to database after mention response');
   }
 });
 
 (async () => {
   const port = +(process.env.PORT || 3978);
-
-  // Validate environment and log model configurations
   try {
     validateEnvironment();
     logModelConfigs();
