@@ -6,8 +6,9 @@ import { MANAGER_PROMPT } from './instructions';
 import { getModelConfig } from '../utils/config';
 import { getConversationParticipantsFromAPI } from '../capabilities/actionItems';
 import { SummarizerCapability } from '../capabilities/summarize';
-import { SearchCapability } from '../capabilities/search';
+import { createSearchCapability, BaseSearchCapability } from '../capabilities/search';
 import { ActionItemsCapability } from '../capabilities/actionItems';
+import { getSearchConfig } from '../utils/searchConfig';
 
 // Result interface for manager responses
 export interface ManagerResult {
@@ -27,13 +28,17 @@ export class ManagerPrompt {
     private lastDelegatedCapability: string | null = null;
     private lastSearchCitations: CitationAppearance[] = [];
     private summarizerCapability: SummarizerCapability;
-    private searchCapability: SearchCapability;
+    private searchCapability: BaseSearchCapability;
     private actionItemsCapability: ActionItemsCapability;
 
     constructor(storage: SqliteKVStore) {
         this.storage = storage;
         this.summarizerCapability = new SummarizerCapability();
-        this.searchCapability = new SearchCapability();
+        
+        // Create search capability based on configuration
+        const searchConfig = getSearchConfig();
+        this.searchCapability = createSearchCapability(searchConfig.defaultSearchType, searchConfig.azureSearch);
+        
         this.actionItemsCapability = new ActionItemsCapability();
         this.prompt = this.initializePrompt();
     }

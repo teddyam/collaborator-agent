@@ -3,7 +3,8 @@ import { CitationAppearance } from '@microsoft/teams.api';
 import { SqliteKVStore } from '../storage/storage';
 import { SummarizerCapability } from '../capabilities/summarize';
 import { ActionItemsCapability } from '../capabilities/actionItems';
-import { SearchCapability } from '../capabilities/search';
+import { createSearchCapability } from '../capabilities/search';
+import { getSearchConfig } from '../utils/searchConfig';
 
 // Router that provides specific prompts for different capability types
 export async function routeToPrompt(
@@ -35,7 +36,8 @@ export async function routeToPrompt(
       });
     
     case 'search':
-      const searchCapability = new SearchCapability();
+      const searchConfig = getSearchConfig();
+      const searchCapability = createSearchCapability(searchConfig.defaultSearchType, searchConfig.azureSearch);
       return searchCapability.createPrompt({
         conversationId,
         userTimezone,
@@ -63,6 +65,16 @@ export function createCapabilityRouter(): {
   routes.set('summarizer', (conversationId: string, userTimezone?: string) => {
     const summarizerCapability = new SummarizerCapability();
     return summarizerCapability.createPrompt({
+      conversationId,
+      userTimezone
+    });
+  });
+  
+  // Add search route with dynamic configuration
+  routes.set('search', (conversationId: string, userTimezone?: string) => {
+    const searchConfig = getSearchConfig();
+    const searchCapability = createSearchCapability(searchConfig.defaultSearchType, searchConfig.azureSearch);
+    return searchCapability.createPrompt({
       conversationId,
       userTimezone
     });
