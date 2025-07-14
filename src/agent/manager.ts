@@ -4,9 +4,10 @@ import { CitationAppearance } from '@microsoft/teams.api';
 import { SqliteKVStore } from '../storage/storage';
 import { MANAGER_PROMPT } from './instructions';
 import { getModelConfig } from '../utils/config';
-import { routeToPrompt } from './router';
-import { createActionItemsPrompt, getConversationParticipantsFromAPI } from '../capabilities/actionItems';
+import { getConversationParticipantsFromAPI } from '../capabilities/actionItems';
 import { SummarizerCapability } from '../capabilities/summarize';
+import { SearchCapability } from '../capabilities/search';
+import { ActionItemsCapability } from '../capabilities/actionItems';
 
 // Result interface for manager responses
 export interface ManagerResult {
@@ -26,10 +27,14 @@ export class ManagerPrompt {
     private lastDelegatedCapability: string | null = null;
     private lastSearchCitations: CitationAppearance[] = [];
     private summarizerCapability: SummarizerCapability;
+    private searchCapability: SearchCapability;
+    private actionItemsCapability: ActionItemsCapability;
 
     constructor(storage: SqliteKVStore) {
         this.storage = storage;
         this.summarizerCapability = new SummarizerCapability();
+        this.searchCapability = new SearchCapability();
+        this.actionItemsCapability = new ActionItemsCapability();
         this.prompt = this.initializePrompt();
     }
 
@@ -319,36 +324,30 @@ For action item requests, use the user's ID for personal action item management.
                 }
             }
 
-            const actionItemsPrompt = createActionItemsPrompt(
+            // Use the new ActionItemsCapability instead of createActionItemsPrompt
+            const result = await this.actionItemsCapability.processRequest(userRequest, {
                 conversationId,
-                this.storage,
-                participantList,
+                userTimezone: this.currentUserTimezone,
+                storage: this.storage,
+                availableMembers: participantList,
                 isPersonalChat,
-                this.currentUserId,
-                this.currentUserName,
-                this.currentUserTimezone,
+                currentUserId: this.currentUserId,
+                currentUserName: this.currentUserName,
                 calculatedStartTime,
                 calculatedEndTime,
                 timespanDescription
-            );
+            });
 
-            // If we have calculated times, include them in the request
-            let enhancedRequest = userRequest;
-            if (calculatedStartTime && calculatedEndTime) {
-                enhancedRequest = `${userRequest}
-
-Pre-calculated time range:
-- Start: ${calculatedStartTime}
-- End: ${calculatedEndTime}
-- Description: ${timespanDescription || 'calculated timespan'}
-
-Use these exact timestamps for any message database queries if time-based filtering is needed.`;
+            if (result.error) {
+                console.error(`❌ Error in Action Items Capability: ${result.error}`);
+                return JSON.stringify({
+                    status: 'error',
+                    message: `Error in Action Items Capability: ${result.error}`
+                });
             }
 
-            const response = await actionItemsPrompt.send(enhancedRequest);
-
-            console.log(`📋 DELEGATION: Action Items Capability completed task. Response length: ${response.content?.length || 0}`);
-            return response.content || 'No response from Action Items Capability';
+            console.log(`📋 DELEGATION: Action Items Capability completed task. Response length: ${result.response?.length || 0}`);
+            return result.response || 'No response from Action Items Capability';
 
         } catch (error) {
             console.error('❌ Error delegating to Action Items Capability:', error);
@@ -368,29 +367,31 @@ Use these exact timestamps for any message database queries if time-based filter
 
             // Create a shared array for citations
             const citationsArray: CitationAppearance[] = [];
-            const searchPrompt = await routeToPrompt('search', conversationId, this.storage, [], this.currentUserTimezone, citationsArray);
             
-            // If we have calculated times, include them in the request
-            let enhancedRequest = userRequest;
-            if (calculatedStartTime && calculatedEndTime) {
-                enhancedRequest = `${userRequest}
+            // Use the new SearchCapability instead of routeToPrompt
+            const result = await this.searchCapability.processRequest(userRequest, {
+                conversationId,
+                userTimezone: this.currentUserTimezone,
+                citationsArray,
+                calculatedStartTime,
+                calculatedEndTime,
+                timespanDescription
+            });
 
-Pre-calculated time range:
-- Start: ${calculatedStartTime}
-- End: ${calculatedEndTime}
-- Description: ${timespanDescription || 'calculated timespan'}
-
-Use these exact timestamps for your search if time-based filtering is needed.`;
+            if (result.error) {
+                console.error(`❌ Error in Search Capability: ${result.error}`);
+                return JSON.stringify({
+                    status: 'error',
+                    message: `Error in Search Capability: ${result.error}`
+                });
             }
-            
-            const response = await searchPrompt.send(enhancedRequest);
 
             // Store the citations that were added during search
             this.lastSearchCitations = citationsArray;
 
-            console.log(`🔍 DELEGATION: Search Capability completed task. Response length: ${response.content?.length || 0}, Citations found: ${citationsArray.length}`);
+            console.log(`🔍 DELEGATION: Search Capability completed task. Response length: ${result.response?.length || 0}, Citations found: ${citationsArray.length}`);
             
-            return response.content || 'No response from Search Capability';
+            return result.response || 'No response from Search Capability';
 
         } catch (error) {
             console.error('❌ Error delegating to Search Capability:', error);
