@@ -6,6 +6,7 @@ import { MANAGER_PROMPT } from './instructions';
 import { getModelConfig } from '../utils/config';
 import { routeToPrompt } from './router';
 import { createActionItemsPrompt, getConversationParticipantsFromAPI } from '../capabilities/actionItems';
+import { SummarizerCapability } from '../capabilities/summarize';
 
 // Result interface for manager responses
 export interface ManagerResult {
@@ -24,9 +25,11 @@ export class ManagerPrompt {
     private currentUserTimezone?: string;
     private lastDelegatedCapability: string | null = null;
     private lastSearchCitations: CitationAppearance[] = [];
+    private summarizerCapability: SummarizerCapability;
 
     constructor(storage: SqliteKVStore) {
         this.storage = storage;
+        this.summarizerCapability = new SummarizerCapability();
         this.prompt = this.initializePrompt();
     }
 
@@ -258,25 +261,25 @@ For action item requests, use the user's ID for personal action item management.
                 console.log(`🕒 DELEGATION: Using pre-calculated time range: ${timespanDescription || 'calculated timespan'} (${calculatedStartTime} to ${calculatedEndTime})`);
             }
 
-            const summarizerPrompt = await routeToPrompt('summarizer', conversationId, this.storage, [], this.currentUserTimezone);
-            
-            // If we have calculated times, include them in the request
-            let enhancedRequest = userRequest;
-            if (calculatedStartTime && calculatedEndTime) {
-                enhancedRequest = `${userRequest}
+            // Use the new SummarizerCapability instead of routeToPrompt
+            const result = await this.summarizerCapability.processRequest(userRequest, {
+                conversationId,
+                userTimezone: this.currentUserTimezone,
+                calculatedStartTime,
+                calculatedEndTime,
+                timespanDescription
+            });
 
-Pre-calculated time range:
-- Start: ${calculatedStartTime}
-- End: ${calculatedEndTime}
-- Description: ${timespanDescription || 'calculated timespan'}
-
-Use these exact timestamps if your request involves time-based message retrieval.`;
+            if (result.error) {
+                console.error(`❌ Error in Summarizer Capability: ${result.error}`);
+                return JSON.stringify({
+                    status: 'error',
+                    message: `Error in Summarizer Capability: ${result.error}`
+                });
             }
-            
-            const response = await summarizerPrompt.send(enhancedRequest);
 
-            console.log(`📋 DELEGATION: Summarizer Capability completed task. Response length: ${response.content?.length || 0}`);
-            return response.content || 'No response from Summarizer Capability';
+            console.log(`📋 DELEGATION: Summarizer Capability completed task. Response length: ${result.response?.length || 0}`);
+            return result.response || 'No response from Summarizer Capability';
 
         } catch (error) {
             console.error('❌ Error delegating to Summarizer Capability:', error);
