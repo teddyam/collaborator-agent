@@ -95,7 +95,10 @@ export function createActionItemsPrompt(
   isPersonalChat: boolean = false,
   currentUserId?: string,
   currentUserName?: string,
-  userTimezone?: string
+  userTimezone?: string,
+  calculatedStartTime?: string,
+  calculatedEndTime?: string,
+  timespanDescription?: string
 ): ChatPrompt {
   const actionItemsModelConfig = getModelConfig('actionItems');
   
@@ -103,8 +106,22 @@ export function createActionItemsPrompt(
     console.log(`🕒 Action Items Capability using timezone: ${userTimezone}`);
   }
   
+  // Build additional time context if pre-calculated times are provided
+  let timeContext = '';
+  if (calculatedStartTime && calculatedEndTime) {
+    console.log(`🕒 Action Items Capability received pre-calculated time range: ${timespanDescription || 'calculated timespan'} (${calculatedStartTime} to ${calculatedEndTime})`);
+    timeContext = `
+
+IMPORTANT: Pre-calculated time range available:
+- Start: ${calculatedStartTime}
+- End: ${calculatedEndTime}
+- Description: ${timespanDescription || 'calculated timespan'}
+
+When analyzing messages for action items or performing any time-based queries, use these exact timestamps instead of calculating your own. This ensures consistency with the Manager's time calculations and reduces token usage.`;
+  }
+  
   // Adjust instructions based on conversation type
-  const instructions = isPersonalChat 
+  const baseInstructions = isPersonalChat 
     ? `You are a personal action items assistant for ${currentUserName || 'the user'}. 
        
        Your role is to help them:
@@ -116,6 +133,8 @@ export function createActionItemsPrompt(
        This is a personal 1:1 conversation, so focus on THEIR action items only.
        Be helpful, concise, and focused on their personal productivity.`
     : ACTION_ITEMS_PROMPT;
+    
+  const instructions = baseInstructions + timeContext;
   
   const prompt = new ChatPrompt({
     instructions,

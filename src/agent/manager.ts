@@ -52,12 +52,24 @@ export class ManagerPrompt {
                     conversation_id: {
                         type: 'string',
                         description: 'The conversation ID for context'
+                    },
+                    calculated_start_time: {
+                        type: 'string',
+                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
+                    },
+                    calculated_end_time: {
+                        type: 'string',
+                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
+                    },
+                    timespan_description: {
+                        type: 'string',
+                        description: 'Human-readable description of the calculated time range (optional)'
                     }
                 },
                 required: ['user_request', 'conversation_id']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'summarizer';
-                return await this.delegateToSummarizer(args.user_request, args.conversation_id);
+                return await this.delegateToSummarizer(args.user_request, args.conversation_id, args.calculated_start_time, args.calculated_end_time, args.timespan_description);
             })
             .function('delegate_to_action_items', 'Delegate task management, action item creation, or assignment tracking to the Action Items Capability', {
                 type: 'object',
@@ -69,12 +81,24 @@ export class ManagerPrompt {
                     conversation_id: {
                         type: 'string',
                         description: 'The conversation ID for context'
+                    },
+                    calculated_start_time: {
+                        type: 'string',
+                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
+                    },
+                    calculated_end_time: {
+                        type: 'string',
+                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
+                    },
+                    timespan_description: {
+                        type: 'string',
+                        description: 'Human-readable description of the calculated time range (optional)'
                     }
                 },
                 required: ['user_request', 'conversation_id']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'action_items';
-                return await this.delegateToActionItems(args.user_request, args.conversation_id);
+                return await this.delegateToActionItems(args.user_request, args.conversation_id, args.calculated_start_time, args.calculated_end_time, args.timespan_description);
             })
             .function('delegate_to_search', 'Delegate conversation search, message finding, or historical conversation lookup to the Search Capability', {
                 type: 'object',
@@ -86,12 +110,24 @@ export class ManagerPrompt {
                     conversation_id: {
                         type: 'string',
                         description: 'The conversation ID for context'
+                    },
+                    calculated_start_time: {
+                        type: 'string',
+                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
+                    },
+                    calculated_end_time: {
+                        type: 'string',
+                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
+                    },
+                    timespan_description: {
+                        type: 'string',
+                        description: 'Human-readable description of the calculated time range (optional)'
                     }
                 },
                 required: ['user_request', 'conversation_id']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'search';
-                return await this.delegateToSearch(args.user_request, args.conversation_id);
+                return await this.delegateToSearch(args.user_request, args.conversation_id, args.calculated_start_time, args.calculated_end_time, args.timespan_description);
             });
 
         console.log('🎯 Manager initialized with delegation capabilities');
@@ -215,12 +251,29 @@ For action item requests, use the user's ID for personal action item management.
         }
     }
 
-    private async delegateToSummarizer(userRequest: string, conversationId: string): Promise<string> {
+    private async delegateToSummarizer(userRequest: string, conversationId: string, calculatedStartTime?: string, calculatedEndTime?: string, timespanDescription?: string): Promise<string> {
         try {
             console.log(`📋 DELEGATION: Delegating to Summarizer Capability: "${userRequest}" for conversation: ${conversationId}`);
+            if (calculatedStartTime && calculatedEndTime) {
+                console.log(`🕒 DELEGATION: Using pre-calculated time range: ${timespanDescription || 'calculated timespan'} (${calculatedStartTime} to ${calculatedEndTime})`);
+            }
 
             const summarizerPrompt = await routeToPrompt('summarizer', conversationId, this.storage, [], this.currentUserTimezone);
-            const response = await summarizerPrompt.send(userRequest);
+            
+            // If we have calculated times, include them in the request
+            let enhancedRequest = userRequest;
+            if (calculatedStartTime && calculatedEndTime) {
+                enhancedRequest = `${userRequest}
+
+Pre-calculated time range:
+- Start: ${calculatedStartTime}
+- End: ${calculatedEndTime}
+- Description: ${timespanDescription || 'calculated timespan'}
+
+Use these exact timestamps if your request involves time-based message retrieval.`;
+            }
+            
+            const response = await summarizerPrompt.send(enhancedRequest);
 
             console.log(`📋 DELEGATION: Summarizer Capability completed task. Response length: ${response.content?.length || 0}`);
             return response.content || 'No response from Summarizer Capability';
@@ -234,9 +287,12 @@ For action item requests, use the user's ID for personal action item management.
         }
     }
 
-    private async delegateToActionItems(userRequest: string, conversationId: string): Promise<string> {
+    private async delegateToActionItems(userRequest: string, conversationId: string, calculatedStartTime?: string, calculatedEndTime?: string, timespanDescription?: string): Promise<string> {
         try {
             console.log(`📋 DELEGATION: Delegating to Action Items Capability: "${userRequest}" for conversation: ${conversationId}`);
+            if (calculatedStartTime && calculatedEndTime) {
+                console.log(`🕒 DELEGATION: Using pre-calculated time range: ${timespanDescription || 'calculated timespan'} (${calculatedStartTime} to ${calculatedEndTime})`);
+            }
 
             let participantList: Array<{ name: string, id: string }> = [];
             let isPersonalChat = false;
@@ -267,10 +323,26 @@ For action item requests, use the user's ID for personal action item management.
                 isPersonalChat,
                 this.currentUserId,
                 this.currentUserName,
-                this.currentUserTimezone
+                this.currentUserTimezone,
+                calculatedStartTime,
+                calculatedEndTime,
+                timespanDescription
             );
 
-            const response = await actionItemsPrompt.send(userRequest);
+            // If we have calculated times, include them in the request
+            let enhancedRequest = userRequest;
+            if (calculatedStartTime && calculatedEndTime) {
+                enhancedRequest = `${userRequest}
+
+Pre-calculated time range:
+- Start: ${calculatedStartTime}
+- End: ${calculatedEndTime}
+- Description: ${timespanDescription || 'calculated timespan'}
+
+Use these exact timestamps for any message database queries if time-based filtering is needed.`;
+            }
+
+            const response = await actionItemsPrompt.send(enhancedRequest);
 
             console.log(`📋 DELEGATION: Action Items Capability completed task. Response length: ${response.content?.length || 0}`);
             return response.content || 'No response from Action Items Capability';
@@ -284,14 +356,31 @@ For action item requests, use the user's ID for personal action item management.
         }
     }
 
-    private async delegateToSearch(userRequest: string, conversationId: string): Promise<string> {
+    private async delegateToSearch(userRequest: string, conversationId: string, calculatedStartTime?: string, calculatedEndTime?: string, timespanDescription?: string): Promise<string> {
         try {
             console.log(`🔍 DELEGATION: Delegating to Search Capability: "${userRequest}" for conversation: ${conversationId}`);
+            if (calculatedStartTime && calculatedEndTime) {
+                console.log(`🕒 DELEGATION: Using pre-calculated time range: ${timespanDescription || 'calculated timespan'} (${calculatedStartTime} to ${calculatedEndTime})`);
+            }
 
             // Create a shared array for citations
             const citationsArray: CitationAppearance[] = [];
             const searchPrompt = await routeToPrompt('search', conversationId, this.storage, [], this.currentUserTimezone, citationsArray);
-            const response = await searchPrompt.send(userRequest);
+            
+            // If we have calculated times, include them in the request
+            let enhancedRequest = userRequest;
+            if (calculatedStartTime && calculatedEndTime) {
+                enhancedRequest = `${userRequest}
+
+Pre-calculated time range:
+- Start: ${calculatedStartTime}
+- End: ${calculatedEndTime}
+- Description: ${timespanDescription || 'calculated timespan'}
+
+Use these exact timestamps for your search if time-based filtering is needed.`;
+            }
+            
+            const response = await searchPrompt.send(enhancedRequest);
 
             // Store the citations that were added during search
             this.lastSearchCitations = citationsArray;
