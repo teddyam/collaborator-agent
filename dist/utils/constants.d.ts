@@ -18,8 +18,3 @@
  */
 export declare const USE_MOCK_DATA = false;
 export declare const DEFAULT_MOCK_CONVERSATION = "mock-conversation";
-/**
- * Other application constants
- */
-export declare const APP_NAME = "Teams Collaborator Bot";
-export declare const VERSION = "1.0.0";

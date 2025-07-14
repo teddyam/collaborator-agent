@@ -1,7 +1,7 @@
 "use strict";
 // Application configuration constants
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.VERSION = exports.APP_NAME = exports.DEFAULT_MOCK_CONVERSATION = exports.USE_MOCK_DATA = void 0;
+exports.DEFAULT_MOCK_CONVERSATION = exports.USE_MOCK_DATA = void 0;
 /**
  * Configuration for mock data usage
  *
@@ -22,9 +22,4 @@ exports.VERSION = exports.APP_NAME = exports.DEFAULT_MOCK_CONVERSATION = exports
  */
 exports.USE_MOCK_DATA = false; // Change to true to enable mock mode
 exports.DEFAULT_MOCK_CONVERSATION = 'mock-conversation';
-/**
- * Other application constants
- */
-exports.APP_NAME = 'Teams Collaborator Bot';
-exports.VERSION = '1.0.0';
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiY29uc3RhbnRzLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vc3JjL3V0aWxzL2NvbnN0YW50cy50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiO0FBQUEsc0NBQXNDOzs7QUFFdEM7Ozs7Ozs7Ozs7Ozs7Ozs7O0dBaUJHO0FBQ1UsUUFBQSxhQUFhLEdBQUcsS0FBSyxDQUFDLENBQUMscUNBQXFDO0FBQzVELFFBQUEseUJBQXlCLEdBQUcsbUJBQW1CLENBQUM7QUFFN0Q7O0dBRUc7QUFDVSxRQUFBLFFBQVEsR0FBRyx3QkFBd0IsQ0FBQztBQUNwQyxRQUFBLE9BQU8sR0FBRyxPQUFPLENBQUMifQ==
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiY29uc3RhbnRzLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vc3JjL3V0aWxzL2NvbnN0YW50cy50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiO0FBQUEsc0NBQXNDOzs7QUFFdEM7Ozs7Ozs7Ozs7Ozs7Ozs7O0dBaUJHO0FBQ1UsUUFBQSxhQUFhLEdBQUcsS0FBSyxDQUFDLENBQUMscUNBQXFDO0FBQzVELFFBQUEseUJBQXlCLEdBQUcsbUJBQW1CLENBQUMifQ==

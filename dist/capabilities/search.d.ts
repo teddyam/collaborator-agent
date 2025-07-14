@@ -1,15 +1,19 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
+import { CitationAppearance } from '@microsoft/teams.api';
 import { MessageRecord } from '../storage/storage';
-import { IMessageActivity } from '@microsoft/teams.api';
+import { BaseCapability, CapabilityConfig } from './capability';
 /**
- * Create an Adaptive Card with deep link to original message
+ * Create a Citation object from a message record for display in Teams
  */
-export declare function createQuotedAdaptiveCard(activity: IMessageActivity): any;
+export declare function createCitationFromRecord(message: MessageRecord, conversationId: string): CitationAppearance;
 /**
- * Create an Adaptive Card from a stored message record
+ * Refactored Search Capability that implements the unified capability interface
  */
-export declare function createQuotedAdaptiveCardFromRecord(message: MessageRecord, conversationId: string): any;
-/**
- * Create the search prompt for a specific conversation
- */
-export declare function createSearchPrompt(conversationId: string, userTimezone?: string, adaptiveCardsArray?: any[]): ChatPrompt;
+export declare class SearchCapability extends BaseCapability {
+    readonly name = "search";
+    createPrompt(config: CapabilityConfig): ChatPrompt;
+    getFunctionSchemas(): Array<{
+        name: string;
+        schema: any;
+    }>;
+}

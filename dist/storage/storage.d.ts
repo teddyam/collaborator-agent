@@ -31,7 +31,7 @@ export interface FeedbackRecord {
     likes: number;
     dislikes: number;
     feedbacks: string;
-    delegated_agent?: string;
+    delegated_capability?: string;
     created_at: string;
     updated_at: string;
 }
@@ -61,8 +61,8 @@ export declare class SqliteKVStore {
     clearAllActionItems(): number;
     getActionItemsSummary(): any;
     getAllActionItems(): ActionItem[];
-    initializeFeedbackRecord(messageId: string, delegatedAgent?: string): FeedbackRecord;
-    storeDelegatedAgent(messageId: string, delegatedAgent: string | null): void;
+    initializeFeedbackRecord(messageId: string, delegatedCapability?: string): FeedbackRecord;
+    storeDelegatedCapability(messageId: string, delegatedCapability: string | null): void;
     getFeedbackByMessageId(messageId: string): FeedbackRecord | undefined;
     updateFeedback(messageId: string, reaction: 'like' | 'dislike', feedbackJson?: any): boolean;
     getAllFeedback(): FeedbackRecord[];

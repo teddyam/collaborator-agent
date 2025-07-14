@@ -1,8 +1,9 @@
+import { CitationAppearance } from '@microsoft/teams.api';
 import { SqliteKVStore } from '../storage/storage';
 export interface ManagerResult {
     response: string;
-    delegatedAgent: string | null;
-    adaptiveCards?: any[];
+    delegatedCapability: string | null;
+    citations?: CitationAppearance[];
 }
 export declare class ManagerPrompt {
     private prompt;
@@ -11,8 +12,11 @@ export declare class ManagerPrompt {
     private currentUserId?;
     private currentUserName?;
     private currentUserTimezone?;
-    private lastDelegatedAgent;
-    private lastSearchAdaptiveCards;
+    private lastDelegatedCapability;
+    private lastSearchCitations;
+    private summarizerCapability;
+    private searchCapability;
+    private actionItemsCapability;
     constructor(storage: SqliteKVStore);
     private initializePrompt;
     processRequest(userRequest: string, conversationId: string, userTimezone?: string): Promise<ManagerResult>;
@@ -21,5 +25,5 @@ export declare class ManagerPrompt {
     private delegateToSummarizer;
     private delegateToActionItems;
     private delegateToSearch;
-    addAgent(agentName: string, _description: string, _functionSchema: any, _handler: Function): void;
+    addCapability(capabilityName: string, _description: string, _functionSchema: any, _handler: Function): void;
 }

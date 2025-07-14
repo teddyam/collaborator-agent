@@ -1,13 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createActionItemsPrompt = createActionItemsPrompt;
+exports.ActionItemsCapability = void 0;
 exports.getConversationParticipantsFromAPI = getConversationParticipantsFromAPI;
 const teams_ai_1 = require("@microsoft/teams.ai");
 const teams_openai_1 = require("@microsoft/teams.openai");
 const message_1 = require("../storage/message");
 const instructions_1 = require("../agent/instructions");
-const config_1 = require("../utils/config");
-// Function schemas for the action items agent
+const capability_1 = require("./capability");
+// Function schemas for the action items capability
 const ANALYZE_FOR_ACTION_ITEMS_SCHEMA = {
     type: 'object',
     properties: {
@@ -82,196 +82,224 @@ const GET_CHAT_MEMBERS_SCHEMA = {
     properties: {}
 };
 /**
- * Creates a specialized action items prompt with function tools for managing action items
- * Handles both group conversations and personal DMs
+ * Refactored Action Items Capability that implements the unified capability interface
  */
-function createActionItemsPrompt(conversationId, storage, availableMembers = [], isPersonalChat = false, currentUserId, currentUserName, userTimezone) {
-    const actionItemsModelConfig = (0, config_1.getModelConfig)('actionItems');
-    if (userTimezone) {
-        console.log(`🕒 Action Items Agent using timezone: ${userTimezone}`);
+class ActionItemsCapability extends capability_1.BaseCapability {
+    name = 'action_items';
+    createPrompt(config) {
+        this.logInit(config.conversationId, config.userTimezone);
+        if (!config.storage) {
+            throw new Error('Action Items capability requires storage configuration');
+        }
+        const actionItemsModelConfig = this.getModelConfig('actionItems');
+        // Build additional time context if pre-calculated times are provided
+        let timeContext = '';
+        if (config.calculatedStartTime && config.calculatedEndTime) {
+            console.log(`🕒 Action Items Capability received pre-calculated time range: ${config.timespanDescription || 'calculated timespan'} (${config.calculatedStartTime} to ${config.calculatedEndTime})`);
+            timeContext = `
+
+IMPORTANT: Pre-calculated time range available:
+- Start: ${config.calculatedStartTime}
+- End: ${config.calculatedEndTime}
+- Description: ${config.timespanDescription || 'calculated timespan'}
+
+When analyzing messages for action items or performing any time-based queries, use these exact timestamps instead of calculating your own. This ensures consistency with the Manager's time calculations and reduces token usage.`;
+        }
+        // Adjust instructions based on conversation type
+        const baseInstructions = config.isPersonalChat
+            ? `You are a personal action items assistant for ${config.currentUserName || 'the user'}. 
+         
+         Your role is to help them:
+         - View their personal action items assigned to them across all conversations
+         - Update the status of their action items  
+         - Get summaries of their workload
+         - Filter action items by status, priority, or due date
+         
+         This is a personal 1:1 conversation, so focus on THEIR action items only.
+         Be helpful, concise, and focused on their personal productivity.`
+            : instructions_1.ACTION_ITEMS_PROMPT;
+        const instructions = baseInstructions + timeContext;
+        const prompt = new teams_ai_1.ChatPrompt({
+            instructions,
+            model: new teams_openai_1.OpenAIChatModel({
+                model: actionItemsModelConfig.model,
+                apiKey: actionItemsModelConfig.apiKey,
+                endpoint: actionItemsModelConfig.endpoint,
+                apiVersion: actionItemsModelConfig.apiVersion,
+            }),
+        })
+            .function('analyze_for_action_items', 'Analyze conversation messages in a time range to identify potential action items', ANALYZE_FOR_ACTION_ITEMS_SCHEMA, async (args) => {
+            console.log(`🔍 FUNCTION CALL: analyze_for_action_items for conversation=${config.conversationId}`);
+            const { start_time, end_time } = args;
+            console.log(`🔍 FUNCTION CALL: get_messages_by_time_range with start=${start_time}, end=${end_time} for conversation=${config.conversationId}`);
+            const messages = (0, message_1.getMessagesByTimeRange)(config.conversationId, start_time, end_time);
+            console.log(`📅 Retrieved ${messages.length} messages from time range`);
+            // Get existing action items to avoid duplicates
+            const existingActionItems = config.storage.getActionItemsByConversation(config.conversationId);
+            return JSON.stringify({
+                status: 'success',
+                time_range: { start_time: start_time, end_time: end_time },
+                messages: messages.map(msg => ({
+                    timestamp: msg.timestamp,
+                    role: msg.role,
+                    name: msg.name,
+                    content: msg.content
+                })),
+                existing_action_items: existingActionItems.map(item => ({
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    assigned_to: item.assigned_to,
+                    status: item.status,
+                    priority: item.priority,
+                    due_date: item.due_date,
+                    created_at: item.created_at
+                })),
+                available_members: config.availableMembers || []
+            });
+        })
+            .function('create_action_item', 'Create a new action item and assign it to a team member', CREATE_ACTION_ITEM_SCHEMA, async (args) => {
+            console.log(`✅ FUNCTION CALL: create_action_item - "${args.title}" assigned to ${args.assigned_to}`);
+            try {
+                // Find the user ID for the assigned person
+                let assignedToId;
+                if (config.isPersonalChat && config.currentUserId) {
+                    // In personal chat, assign to the current user
+                    assignedToId = config.currentUserId;
+                }
+                else {
+                    // In group chat, find the user ID from available members
+                    const assignedMember = (config.availableMembers || []).find(member => member.name === args.assigned_to ||
+                        member.name.toLowerCase() === args.assigned_to.toLowerCase());
+                    assignedToId = assignedMember?.id;
+                }
+                console.log(`🔍 Found user ID for "${args.assigned_to}": ${assignedToId || 'Not found'}`);
+                // Parse due_date with timezone awareness if it's a relative expression
+                let parsedDueDate = args.due_date;
+                if (args.due_date && config.userTimezone) {
+                    const timezoneParsedDate = parseDeadlineWithTimezone(args.due_date, config.userTimezone);
+                    if (timezoneParsedDate) {
+                        parsedDueDate = timezoneParsedDate;
+                        console.log(`🕒 Parsed deadline "${args.due_date}" to ${parsedDueDate} (timezone: ${config.userTimezone})`);
+                    }
+                }
+                const actionItem = config.storage.createActionItem({
+                    conversation_id: config.conversationId,
+                    title: args.title,
+                    description: args.description,
+                    assigned_to: args.assigned_to,
+                    assigned_to_id: assignedToId,
+                    assigned_by: config.currentUserName || 'AI Action Items Capability',
+                    status: 'pending',
+                    priority: args.priority,
+                    due_date: parsedDueDate
+                });
+                return JSON.stringify({
+                    status: 'success',
+                    action_item: {
+                        id: actionItem.id,
+                        title: actionItem.title,
+                        description: actionItem.description,
+                        assigned_to: actionItem.assigned_to,
+                        priority: actionItem.priority,
+                        due_date: actionItem.due_date,
+                        created_at: actionItem.created_at
+                    },
+                    message: `Action item "${args.title}" has been created and assigned to ${args.assigned_to}`
+                });
+            }
+            catch (error) {
+                console.error('❌ Error creating action item:', error);
+                return JSON.stringify({
+                    status: 'error',
+                    message: 'Failed to create action item',
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                });
+            }
+        })
+            .function('get_action_items', 'Retrieve action items for this conversation, optionally filtered by assignee or status', GET_ACTION_ITEMS_SCHEMA, async (args) => {
+            console.log(`🔍 FUNCTION CALL: get_action_items with filters:`, args);
+            let actionItems;
+            if (config.isPersonalChat && config.currentUserId) {
+                // In personal chat, only show the user's own action items across all conversations
+                actionItems = config.storage.getActionItemsByUserId(config.currentUserId, args.status);
+                console.log(`👤 Personal chat: Retrieved ${actionItems.length} action items for user ${config.currentUserName}`);
+            }
+            else {
+                // In group chat, handle normal conversation-based logic
+                if (args.assigned_to && args.assigned_to !== 'all') {
+                    // Get action items for specific user
+                    actionItems = config.storage.getActionItemsForUser(args.assigned_to, args.status);
+                }
+                else {
+                    // Get all action items for this conversation
+                    actionItems = config.storage.getActionItemsByConversation(config.conversationId);
+                    if (args.status) {
+                        actionItems = actionItems.filter(item => item.status === args.status);
+                    }
+                }
+            }
+            return JSON.stringify({
+                status: 'success',
+                conversation_type: config.isPersonalChat ? 'personal' : 'group',
+                filters: args,
+                action_items: actionItems.map(item => ({
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    assigned_to: item.assigned_to,
+                    assigned_by: item.assigned_by,
+                    status: item.status,
+                    priority: item.priority,
+                    due_date: item.due_date,
+                    created_at: item.created_at,
+                    updated_at: item.updated_at,
+                    conversation_id: config.isPersonalChat ? item.conversation_id : undefined // Show source conversation in personal view
+                })),
+                count: actionItems.length
+            });
+        })
+            .function('update_action_item_status', 'Update the status of an existing action item', UPDATE_ACTION_ITEM_SCHEMA, async (args) => {
+            console.log(`🔄 FUNCTION CALL: update_action_item_status - Item #${args.action_item_id} to ${args.new_status}`);
+            const success = config.storage.updateActionItemStatus(args.action_item_id, args.new_status, 'AI Action Items Capability');
+            if (success) {
+                const updatedItem = config.storage.getActionItemById(args.action_item_id);
+                return JSON.stringify({
+                    status: 'success',
+                    action_item: updatedItem,
+                    message: `Action item #${args.action_item_id} status updated to: ${args.new_status}`
+                });
+            }
+            else {
+                return JSON.stringify({
+                    status: 'error',
+                    message: `Failed to update action item #${args.action_item_id}. Item may not exist.`
+                });
+            }
+        })
+            .function('get_chat_members', 'Get the list of available members in this chat for action item assignment', GET_CHAT_MEMBERS_SCHEMA, async () => {
+            console.log(`👥 FUNCTION CALL: get_chat_members for conversation=${config.conversationId}`);
+            return JSON.stringify({
+                status: 'success',
+                available_members: config.availableMembers || [],
+                member_count: (config.availableMembers || []).length,
+                guidance: "These are the available members who can be assigned action items. Choose assignees based on their expertise, availability, and the nature of the task."
+            });
+        });
+        console.log(`🎯 Action Items Capability created with unified interface`);
+        return prompt;
     }
-    // Adjust instructions based on conversation type
-    const instructions = isPersonalChat
-        ? `You are a personal action items assistant for ${currentUserName || 'the user'}. 
-       
-       Your role is to help them:
-       - View their personal action items assigned to them across all conversations
-       - Update the status of their action items  
-       - Get summaries of their workload
-       - Filter action items by status, priority, or due date
-       
-       This is a personal 1:1 conversation, so focus on THEIR action items only.
-       Be helpful, concise, and focused on their personal productivity.`
-        : instructions_1.ACTION_ITEMS_PROMPT;
-    const prompt = new teams_ai_1.ChatPrompt({
-        instructions,
-        model: new teams_openai_1.OpenAIChatModel({
-            model: actionItemsModelConfig.model,
-            apiKey: actionItemsModelConfig.apiKey,
-            endpoint: actionItemsModelConfig.endpoint,
-            apiVersion: actionItemsModelConfig.apiVersion,
-        }),
-    })
-        .function('analyze_for_action_items', 'Analyze conversation messages in a time range to identify potential action items', ANALYZE_FOR_ACTION_ITEMS_SCHEMA, async (args) => {
-        console.log(`🔍 FUNCTION CALL: analyze_for_action_items for conversation=${conversationId}`);
-        const { start_time, end_time } = args;
-        console.log(`🔍 FUNCTION CALL: get_messages_by_time_range with start=${start_time}, end=${end_time} for conversation=${conversationId}`);
-        const messages = (0, message_1.getMessagesByTimeRange)(conversationId, start_time, end_time);
-        console.log(`📅 Retrieved ${messages.length} messages from time range`);
-        // Get existing action items to avoid duplicates
-        const existingActionItems = storage.getActionItemsByConversation(conversationId);
-        return JSON.stringify({
-            status: 'success',
-            time_range: { start_time: start_time, end_time: end_time },
-            messages: messages.map(msg => ({
-                timestamp: msg.timestamp,
-                role: msg.role,
-                name: msg.name,
-                content: msg.content
-            })),
-            available_members: availableMembers,
-            existing_action_items: existingActionItems.map(item => ({
-                id: item.id,
-                title: item.title,
-                assigned_to: item.assigned_to,
-                status: item.status,
-                priority: item.priority
-            })),
-            message_count: messages.length,
-            guidance: "Analyze these messages to identify actionable tasks, decisions that need follow-up, or commitments made by team members. Consider who would be best suited for each task based on their expertise and current workload."
-        });
-    })
-        .function('create_action_item', 'Create a new action item and assign it to a team member', CREATE_ACTION_ITEM_SCHEMA, async (args) => {
-        console.log(`✅ FUNCTION CALL: create_action_item - "${args.title}" assigned to ${args.assigned_to}`);
-        try {
-            // Find the user ID for the assigned person
-            let assignedToId;
-            if (isPersonalChat && currentUserId) {
-                // In personal chat, assign to the current user
-                assignedToId = currentUserId;
-            }
-            else {
-                // In group chat, find the user ID from available members
-                const assignedMember = availableMembers.find(member => member.name === args.assigned_to ||
-                    member.name.toLowerCase() === args.assigned_to.toLowerCase());
-                assignedToId = assignedMember?.id;
-            }
-            console.log(`🔍 Found user ID for "${args.assigned_to}": ${assignedToId || 'Not found'}`);
-            // Parse due_date with timezone awareness if it's a relative expression
-            let parsedDueDate = args.due_date;
-            if (args.due_date && userTimezone) {
-                const timezoneParsedDate = parseDeadlineWithTimezone(args.due_date, userTimezone);
-                if (timezoneParsedDate) {
-                    parsedDueDate = timezoneParsedDate;
-                    console.log(`🕒 Parsed deadline "${args.due_date}" to ${parsedDueDate} (timezone: ${userTimezone})`);
-                }
-            }
-            const actionItem = storage.createActionItem({
-                conversation_id: conversationId,
-                title: args.title,
-                description: args.description,
-                assigned_to: args.assigned_to,
-                assigned_to_id: assignedToId, // Now properly setting the user ID
-                assigned_by: 'AI Action Items Agent',
-                status: 'pending',
-                priority: args.priority,
-                due_date: parsedDueDate
-            });
-            return JSON.stringify({
-                status: 'success',
-                action_item: {
-                    id: actionItem.id,
-                    title: actionItem.title,
-                    description: actionItem.description,
-                    assigned_to: actionItem.assigned_to,
-                    priority: actionItem.priority,
-                    due_date: actionItem.due_date,
-                    created_at: actionItem.created_at
-                },
-                message: `Action item "${args.title}" has been created and assigned to ${args.assigned_to}`
-            });
-        }
-        catch (error) {
-            console.error('❌ Error creating action item:', error);
-            return JSON.stringify({
-                status: 'error',
-                message: 'Failed to create action item',
-                error: error instanceof Error ? error.message : 'Unknown error'
-            });
-        }
-    })
-        .function('get_action_items', 'Retrieve action items for this conversation, optionally filtered by assignee or status', GET_ACTION_ITEMS_SCHEMA, async (args) => {
-        console.log(`🔍 FUNCTION CALL: get_action_items with filters:`, args);
-        let actionItems;
-        if (isPersonalChat && currentUserId) {
-            // In personal chat, only show the user's own action items across all conversations
-            actionItems = storage.getActionItemsByUserId(currentUserId, args.status);
-            console.log(`👤 Personal chat: Retrieved ${actionItems.length} action items for user ${currentUserName}`);
-        }
-        else {
-            // In group chat, handle normal conversation-based logic
-            if (args.assigned_to && args.assigned_to !== 'all') {
-                // Get action items for specific user
-                actionItems = storage.getActionItemsForUser(args.assigned_to, args.status);
-            }
-            else {
-                // Get all action items for this conversation
-                actionItems = storage.getActionItemsByConversation(conversationId);
-                if (args.status) {
-                    actionItems = actionItems.filter(item => item.status === args.status);
-                }
-            }
-        }
-        return JSON.stringify({
-            status: 'success',
-            conversation_type: isPersonalChat ? 'personal' : 'group',
-            filters: args,
-            action_items: actionItems.map(item => ({
-                id: item.id,
-                title: item.title,
-                description: item.description,
-                assigned_to: item.assigned_to,
-                assigned_by: item.assigned_by,
-                status: item.status,
-                priority: item.priority,
-                due_date: item.due_date,
-                created_at: item.created_at,
-                updated_at: item.updated_at,
-                conversation_id: isPersonalChat ? item.conversation_id : undefined // Show source conversation in personal view
-            })),
-            count: actionItems.length
-        });
-    })
-        .function('update_action_item_status', 'Update the status of an existing action item', UPDATE_ACTION_ITEM_SCHEMA, async (args) => {
-        console.log(`🔄 FUNCTION CALL: update_action_item_status - Item #${args.action_item_id} to ${args.new_status}`);
-        const success = storage.updateActionItemStatus(args.action_item_id, args.new_status, 'AI Action Items Agent');
-        if (success) {
-            const updatedItem = storage.getActionItemById(args.action_item_id);
-            return JSON.stringify({
-                status: 'success',
-                action_item: updatedItem,
-                message: `Action item #${args.action_item_id} status updated to: ${args.new_status}`
-            });
-        }
-        else {
-            return JSON.stringify({
-                status: 'error',
-                message: `Failed to update action item #${args.action_item_id}. Item may not exist.`
-            });
-        }
-    })
-        .function('get_chat_members', 'Get the list of available members in this chat for action item assignment', GET_CHAT_MEMBERS_SCHEMA, async () => {
-        console.log(`👥 FUNCTION CALL: get_chat_members for conversation=${conversationId}`);
-        return JSON.stringify({
-            status: 'success',
-            available_members: availableMembers,
-            member_count: availableMembers.length,
-            guidance: "These are the available members who can be assigned action items. Choose assignees based on their expertise, availability, and the nature of the task."
-        });
-    });
-    console.log('🎯 Action Items Agent initialized with action item management capabilities');
-    return prompt;
+    getFunctionSchemas() {
+        return [
+            { name: 'analyze_for_action_items', schema: ANALYZE_FOR_ACTION_ITEMS_SCHEMA },
+            { name: 'create_action_item', schema: CREATE_ACTION_ITEM_SCHEMA },
+            { name: 'get_action_items', schema: GET_ACTION_ITEMS_SCHEMA },
+            { name: 'update_action_item_status', schema: UPDATE_ACTION_ITEM_SCHEMA },
+            { name: 'get_chat_members', schema: GET_CHAT_MEMBERS_SCHEMA }
+        ];
+    }
 }
+exports.ActionItemsCapability = ActionItemsCapability;
 /**
  * Helper function to get conversation participants using Teams API
  */
@@ -346,4 +374,4 @@ function parseDeadlineWithTimezone(deadlineExpression, userTimezone = 'UTC') {
     }
     return undefined;
 }
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiYWN0aW9uSXRlbXMuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi9zcmMvY2FwYWJpbGl0aWVzL2FjdGlvbkl0ZW1zLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7O0FBMEZBLDBEQXFOQztBQUtELGdGQWtCQztBQXRVRCxrREFBaUQ7QUFDakQsMERBQTBEO0FBRTFELGdEQUE0RDtBQUM1RCx3REFBNEQ7QUFDNUQsNENBQWlEO0FBRWpELDhDQUE4QztBQUM5QyxNQUFNLCtCQUErQixHQUFHO0lBQ3RDLElBQUksRUFBRSxRQUFpQjtJQUN2QixVQUFVLEVBQUU7UUFDVixVQUFVLEVBQUU7WUFDVixJQUFJLEVBQUUsUUFBaUI7WUFDdkIsV0FBVyxFQUFFLGtHQUFrRztTQUNoSDtRQUNELFFBQVEsRUFBRTtZQUNSLElBQUksRUFBRSxRQUFpQjtZQUN2QixXQUFXLEVBQUUsc0ZBQXNGO1NBQ3BHO0tBQ0Y7Q0FDRixDQUFDO0FBRUYsTUFBTSx5QkFBeUIsR0FBRztJQUNoQyxJQUFJLEVBQUUsUUFBaUI7SUFDdkIsVUFBVSxFQUFFO1FBQ1YsS0FBSyxFQUFFO1lBQ0wsSUFBSSxFQUFFLFFBQWlCO1lBQ3ZCLFdBQVcsRUFBRSxpQ0FBaUM7U0FDL0M7UUFDRCxXQUFXLEVBQUU7WUFDWCxJQUFJLEVBQUUsUUFBaUI7WUFDdkIsV0FBVyxFQUFFLCtDQUErQztTQUM3RDtRQUNELFdBQVcsRUFBRTtZQUNYLElBQUksRUFBRSxRQUFpQjtZQUN2QixXQUFXLEVBQUUsb0RBQW9EO1NBQ2xFO1FBQ0QsUUFBUSxFQUFFO1lBQ1IsSUFBSSxFQUFFLFFBQWlCO1lBQ3ZCLElBQUksRUFBRSxDQUFDLEtBQUssRUFBRSxRQUFRLEVBQUUsTUFBTSxFQUFFLFFBQVEsQ0FBQztZQUN6QyxXQUFXLEVBQUUsbUNBQW1DO1NBQ2pEO1FBQ0QsUUFBUSxFQUFFO1lBQ1IsSUFBSSxFQUFFLFFBQWlCO1lBQ3ZCLFdBQVcsRUFBRSxzS0FBc0s7U0FDcEw7S0FDRjtJQUNELFFBQVEs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
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiYWN0aW9uSXRlbXMuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi9zcmMvY2FwYWJpbGl0aWVzL2FjdGlvbkl0ZW1zLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7OztBQTBVQSxnRkFrQkM7QUE1VkQsa0RBQWlEO0FBQ2pELDBEQUEwRDtBQUUxRCxnREFBNEQ7QUFDNUQsd0RBQTREO0FBQzVELDZDQUFnRTtBQUVoRSxtREFBbUQ7QUFDbkQsTUFBTSwrQkFBK0IsR0FBRztJQUN0QyxJQUFJLEVBQUUsUUFBaUI7SUFDdkIsVUFBVSxFQUFFO1FBQ1YsVUFBVSxFQUFFO1lBQ1YsSUFBSSxFQUFFLFFBQWlCO1lBQ3ZCLFdBQVcsRUFBRSxrR0FBa0c7U0FDaEg7UUFDRCxRQUFRLEVBQUU7WUFDUixJQUFJLEVBQUUsUUFBaUI7WUFDdkIsV0FBVyxFQUFFLHNGQUFzRjtTQUNwRztLQUNGO0NBQ0YsQ0FBQztBQUVGLE1BQU0seUJBQXlCLEdBQUc7SUFDaEMsSUFBSSxFQUFFLFFBQWlCO0lBQ3ZCLFVBQVUsRUFBRTtRQUNWLEtBQUssRUFBRTtZQUNMLElBQUksRUFBRSxRQUFpQjtZQUN2QixXQUFXLEVBQUUsaUNBQWlDO1NBQy9DO1FBQ0QsV0FBVyxFQUFFO1lBQ1gsSUFBSSxFQUFFLFFBQWlCO1lBQ3ZCLFdBQVcsRUFBRSwrQ0FBK0M7U0FDN0Q7UUFDRCxXQUFXLEVBQUU7WUFDWCxJQUFJLEVBQUUsUUFBaUI7WUFDdkIsV0FBVyxFQUFFLG9EQUFvRDtTQUNsRTtRQUNELFFBQVEsRUFBRTtZQUNSLElBQUksRUFBRSxRQUFpQjtZQUN2QixJQUFJLEVBQUUsQ0FBQyxLQUFLLEVBQUUsUUFBUSxFQUFFLE1BQU0sRUFBRSxRQUFRLENBQUM7WUFDekMsV0FBVyxFQUFFLG1DQUFtQztTQUNqRDtRQUNELFFBQVEsRUFBRTtZQUNSLElBQUksRUFBRSxRQUFpQjtZQUN2QixXQUFXLEVBQUUsc0tBQXNLO1NBQ3BMO0tBQ0Y7SUFDRCxRQUFRLEVBQUUsQ0FBQyxP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

@@ -1,13 +1,16 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
-import { SqliteKVStore } from '../storage/storage';
+import { BaseCapability, CapabilityConfig } from './capability';
 /**
- * Creates a specialized action items prompt with function tools for managing action items
- * Handles both group conversations and personal DMs
+ * Refactored Action Items Capability that implements the unified capability interface
  */
-export declare function createActionItemsPrompt(conversationId: string, storage: SqliteKVStore, availableMembers?: Array<{
-    name: string;
-    id: string;
-}>, isPersonalChat?: boolean, currentUserId?: string, currentUserName?: string, userTimezone?: string): ChatPrompt;
+export declare class ActionItemsCapability extends BaseCapability {
+    readonly name = "action_items";
+    createPrompt(config: CapabilityConfig): ChatPrompt;
+    getFunctionSchemas(): Array<{
+        name: string;
+        schema: any;
+    }>;
+}
 /**
  * Helper function to get conversation participants using Teams API
  */
