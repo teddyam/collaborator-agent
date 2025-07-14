@@ -1,16 +1,19 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
+import { CitationAppearance } from '@microsoft/teams.api';
 import { SqliteKVStore } from '../storage/storage';
 import { MANAGER_PROMPT } from './instructions';
 import { getModelConfig } from '../utils/config';
-import { routeToPrompt } from './router';
-import { createActionItemsPrompt, getConversationParticipantsFromAPI } from '../capabilities/actionItems';
+import { getConversationParticipantsFromAPI } from '../capabilities/actionItems';
+import { SummarizerCapability } from '../capabilities/summarize';
+import { SearchCapability } from '../capabilities/search';
+import { ActionItemsCapability } from '../capabilities/actionItems';
 
 // Result interface for manager responses
 export interface ManagerResult {
     response: string;
     delegatedCapability: string | null; // 'summarizer', 'action_items', 'search', or null for direct response
-    adaptiveCards?: any[]; // Optional adaptive cards for search results
+    citations?: CitationAppearance[]; // Optional citations for search results
 }
 
 // Manager prompt that coordinates all sub-tasks
@@ -22,10 +25,16 @@ export class ManagerPrompt {
     private currentUserName?: string;
     private currentUserTimezone?: string;
     private lastDelegatedCapability: string | null = null;
-    private lastSearchAdaptiveCards: any[] = [];
+    private lastSearchCitations: CitationAppearance[] = [];
+    private summarizerCapability: SummarizerCapability;
+    private searchCapability: SearchCapability;
+    private actionItemsCapability: ActionItemsCapability;
 
     constructor(storage: SqliteKVStore) {
         this.storage = storage;
+        this.summarizerCapability = new SummarizerCapability();
+        this.searchCapability = new SearchCapability();
+        this.actionItemsCapability = new ActionItemsCapability();
         this.prompt = this.initializePrompt();
     }
 
@@ -51,12 +60,24 @@ export class ManagerPrompt {
                     conversation_id: {
                         type: 'string',
                         description: 'The conversation ID for context'
+                    },
+                    calculated_start_time: {
+                        type: 'string',
+                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
+                    },
+                    calculated_end_time: {
+                        type: 'string',
+                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
+                    },
+                    timespan_description: {
+                        type: 'string',
+                        description: 'Human-readable description of the calculated time range (optional)'
                     }
                 },
                 required: ['user_request', 'conversation_id']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'summarizer';
-                return await this.delegateToSummarizer(args.user_request, args.conversation_id);
+                return await this.delegateToSummarizer(args.user_request, args.conversation_id, args.calculated_start_time, args.calculated_end_time, args.timespan_description);
             })
             .function('delegate_to_action_items', 'Delegate task management, action item creation, or assignment tracking to the Action Items Capability', {
                 type: 'object',
@@ -68,12 +89,24 @@ export class ManagerPrompt {
                     conversation_id: {
                         type: 'string',
                         description: 'The conversation ID for context'
+                    },
+                    calculated_start_time: {
+                        type: 'string',
+                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
+                    },
+                    calculated_end_time: {
+                        type: 'string',
+                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
+                    },
+                    timespan_description: {
+                        type: 'string',
+                        description: 'Human-readable description of the calculated time range (optional)'
                     }
                 },
                 required: ['user_request', 'conversation_id']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'action_items';
-                return await this.delegateToActionItems(args.user_request, args.conversation_id);
+                return await this.delegateToActionItems(args.user_request, args.conversation_id, args.calculated_start_time, args.calculated_end_time, args.timespan_description);
             })
             .function('delegate_to_search', 'Delegate conversation search, message finding, or historical conversation lookup to the Search Capability', {
                 type: 'object',
@@ -85,12 +118,24 @@ export class ManagerPrompt {
                     conversation_id: {
                         type: 'string',
                         description: 'The conversation ID for context'
+                    },
+                    calculated_start_time: {
+                        type: 'string',
+                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
+                    },
+                    calculated_end_time: {
+                        type: 'string',
+                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
+                    },
+                    timespan_description: {
+                        type: 'string',
+                        description: 'Human-readable description of the calculated time range (optional)'
                     }
                 },
                 required: ['user_request', 'conversation_id']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'search';
-                return await this.delegateToSearch(args.user_request, args.conversation_id);
+                return await this.delegateToSearch(args.user_request, args.conversation_id, args.calculated_start_time, args.calculated_end_time, args.timespan_description);
             });
 
         console.log('🎯 Manager initialized with delegation capabilities');
@@ -105,7 +150,7 @@ export class ManagerPrompt {
             }
 
             this.lastDelegatedCapability = null;
-            this.lastSearchAdaptiveCards = [];
+            this.lastSearchCitations = [];
 
             const response = await this.prompt.send(`
 User Request: "${userRequest}"
@@ -119,7 +164,7 @@ Please analyze this request and delegate it to the appropriate specialized capab
             return {
                 response: response.content || 'No response generated',
                 delegatedCapability: this.lastDelegatedCapability,
-                adaptiveCards: this.lastSearchAdaptiveCards.length > 0 ? this.lastSearchAdaptiveCards : undefined
+                citations: this.lastSearchCitations.length > 0 ? this.lastSearchCitations : undefined
             };
 
         } catch (error) {
@@ -140,7 +185,7 @@ Please analyze this request and delegate it to the appropriate specialized capab
 
             this.currentAPI = api;
             this.lastDelegatedCapability = null;
-            this.lastSearchAdaptiveCards = [];
+            this.lastSearchCitations = [];
 
             const response = await this.prompt.send(`
 User Request: "${userRequest}"
@@ -154,7 +199,7 @@ Please analyze this request and delegate it to the appropriate specialized capab
             return {
                 response: response.content || 'No response generated',
                 delegatedCapability: this.lastDelegatedCapability,
-                adaptiveCards: this.lastSearchAdaptiveCards.length > 0 ? this.lastSearchAdaptiveCards : undefined
+                citations: this.lastSearchCitations.length > 0 ? this.lastSearchCitations : undefined
             };
 
         } catch (error) {
@@ -180,7 +225,7 @@ Please analyze this request and delegate it to the appropriate specialized capab
             this.currentUserId = userId;
             this.currentUserName = userName;
             this.lastDelegatedCapability = null;
-            this.lastSearchAdaptiveCards = [];
+            this.lastSearchCitations = [];
 
             const response = await this.prompt.send(`
 User Request: "${userRequest}"
@@ -197,7 +242,7 @@ For action item requests, use the user's ID for personal action item management.
             return {
                 response: response.content || 'No response generated',
                 delegatedCapability: this.lastDelegatedCapability,
-                adaptiveCards: this.lastSearchAdaptiveCards.length > 0 ? this.lastSearchAdaptiveCards : undefined
+                citations: this.lastSearchCitations.length > 0 ? this.lastSearchCitations : undefined
             };
 
         } catch (error) {
@@ -214,15 +259,32 @@ For action item requests, use the user's ID for personal action item management.
         }
     }
 
-    private async delegateToSummarizer(userRequest: string, conversationId: string): Promise<string> {
+    private async delegateToSummarizer(userRequest: string, conversationId: string, calculatedStartTime?: string, calculatedEndTime?: string, timespanDescription?: string): Promise<string> {
         try {
             console.log(`📋 DELEGATION: Delegating to Summarizer Capability: "${userRequest}" for conversation: ${conversationId}`);
+            if (calculatedStartTime && calculatedEndTime) {
+                console.log(`🕒 DELEGATION: Using pre-calculated time range: ${timespanDescription || 'calculated timespan'} (${calculatedStartTime} to ${calculatedEndTime})`);
+            }
 
-            const summarizerPrompt = await routeToPrompt('summarizer', conversationId, this.storage, [], this.currentUserTimezone);
-            const response = await summarizerPrompt.send(userRequest);
+            // Use the new SummarizerCapability instead of routeToPrompt
+            const result = await this.summarizerCapability.processRequest(userRequest, {
+                conversationId,
+                userTimezone: this.currentUserTimezone,
+                calculatedStartTime,
+                calculatedEndTime,
+                timespanDescription
+            });
 
-            console.log(`📋 DELEGATION: Summarizer Capability completed task. Response length: ${response.content?.length || 0}`);
-            return response.content || 'No response from Summarizer Capability';
+            if (result.error) {
+                console.error(`❌ Error in Summarizer Capability: ${result.error}`);
+                return JSON.stringify({
+                    status: 'error',
+                    message: `Error in Summarizer Capability: ${result.error}`
+                });
+            }
+
+            console.log(`📋 DELEGATION: Summarizer Capability completed task. Response length: ${result.response?.length || 0}`);
+            return result.response || 'No response from Summarizer Capability';
 
         } catch (error) {
             console.error('❌ Error delegating to Summarizer Capability:', error);
@@ -233,9 +295,12 @@ For action item requests, use the user's ID for personal action item management.
         }
     }
 
-    private async delegateToActionItems(userRequest: string, conversationId: string): Promise<string> {
+    private async delegateToActionItems(userRequest: string, conversationId: string, calculatedStartTime?: string, calculatedEndTime?: string, timespanDescription?: string): Promise<string> {
         try {
             console.log(`📋 DELEGATION: Delegating to Action Items Capability: "${userRequest}" for conversation: ${conversationId}`);
+            if (calculatedStartTime && calculatedEndTime) {
+                console.log(`🕒 DELEGATION: Using pre-calculated time range: ${timespanDescription || 'calculated timespan'} (${calculatedStartTime} to ${calculatedEndTime})`);
+            }
 
             let participantList: Array<{ name: string, id: string }> = [];
             let isPersonalChat = false;
@@ -259,20 +324,30 @@ For action item requests, use the user's ID for personal action item management.
                 }
             }
 
-            const actionItemsPrompt = createActionItemsPrompt(
+            // Use the new ActionItemsCapability instead of createActionItemsPrompt
+            const result = await this.actionItemsCapability.processRequest(userRequest, {
                 conversationId,
-                this.storage,
-                participantList,
+                userTimezone: this.currentUserTimezone,
+                storage: this.storage,
+                availableMembers: participantList,
                 isPersonalChat,
-                this.currentUserId,
-                this.currentUserName,
-                this.currentUserTimezone
-            );
+                currentUserId: this.currentUserId,
+                currentUserName: this.currentUserName,
+                calculatedStartTime,
+                calculatedEndTime,
+                timespanDescription
+            });
 
-            const response = await actionItemsPrompt.send(userRequest);
+            if (result.error) {
+                console.error(`❌ Error in Action Items Capability: ${result.error}`);
+                return JSON.stringify({
+                    status: 'error',
+                    message: `Error in Action Items Capability: ${result.error}`
+                });
+            }
 
-            console.log(`📋 DELEGATION: Action Items Capability completed task. Response length: ${response.content?.length || 0}`);
-            return response.content || 'No response from Action Items Capability';
+            console.log(`📋 DELEGATION: Action Items Capability completed task. Response length: ${result.response?.length || 0}`);
+            return result.response || 'No response from Action Items Capability';
 
         } catch (error) {
             console.error('❌ Error delegating to Action Items Capability:', error);
@@ -283,21 +358,40 @@ For action item requests, use the user's ID for personal action item management.
         }
     }
 
-    private async delegateToSearch(userRequest: string, conversationId: string): Promise<string> {
+    private async delegateToSearch(userRequest: string, conversationId: string, calculatedStartTime?: string, calculatedEndTime?: string, timespanDescription?: string): Promise<string> {
         try {
             console.log(`🔍 DELEGATION: Delegating to Search Capability: "${userRequest}" for conversation: ${conversationId}`);
+            if (calculatedStartTime && calculatedEndTime) {
+                console.log(`🕒 DELEGATION: Using pre-calculated time range: ${timespanDescription || 'calculated timespan'} (${calculatedStartTime} to ${calculatedEndTime})`);
+            }
 
-            // Create a shared array for adaptive cards
-            const adaptiveCardsArray: any[] = [];
-            const searchPrompt = await routeToPrompt('search', conversationId, this.storage, [], this.currentUserTimezone, adaptiveCardsArray);
-            const response = await searchPrompt.send(userRequest);
-
-            // Store the adaptive cards that were added during search
-            this.lastSearchAdaptiveCards = adaptiveCardsArray;
-
-            console.log(`🔍 DELEGATION: Search Capability completed task. Response length: ${response.content?.length || 0}, Cards found: ${adaptiveCardsArray.length}`);
+            // Create a shared array for citations
+            const citationsArray: CitationAppearance[] = [];
             
-            return response.content || 'No response from Search Capability';
+            // Use the new SearchCapability instead of routeToPrompt
+            const result = await this.searchCapability.processRequest(userRequest, {
+                conversationId,
+                userTimezone: this.currentUserTimezone,
+                citationsArray,
+                calculatedStartTime,
+                calculatedEndTime,
+                timespanDescription
+            });
+
+            if (result.error) {
+                console.error(`❌ Error in Search Capability: ${result.error}`);
+                return JSON.stringify({
+                    status: 'error',
+                    message: `Error in Search Capability: ${result.error}`
+                });
+            }
+
+            // Store the citations that were added during search
+            this.lastSearchCitations = citationsArray;
+
+            console.log(`🔍 DELEGATION: Search Capability completed task. Response length: ${result.response?.length || 0}, Citations found: ${citationsArray.length}`);
+            
+            return result.response || 'No response from Search Capability';
 
         } catch (error) {
             console.error('❌ Error delegating to Search Capability:', error);

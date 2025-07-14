@@ -1,10 +1,10 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
+import { CitationAppearance } from '@microsoft/teams.api';
 import { MessageRecord } from '../storage/storage';
 import { getMessagesByTimeRange } from '../storage/message';
-import { getModelConfig } from '../utils/config';
-import { IMessageActivity } from '@microsoft/teams.api';
 import { SEARCH_PROMPT } from '../agent/instructions';
+import { BaseCapability, CapabilityConfig } from './capability';
 
 // Function schemas for search operations
 const SEARCH_MESSAGES_SCHEMA = {
@@ -38,70 +38,25 @@ const SEARCH_MESSAGES_SCHEMA = {
 };
 
 /**
- * Create an Adaptive Card with deep link to original message
+ * Create a Citation object from a message record for display in Teams
  */
-export function createQuotedAdaptiveCard(activity: IMessageActivity): any {
-  if (!activity.id || !activity.conversation?.id) {
-    throw new Error("Missing activity.id or conversation.id");
-  }
-
-  const messageText = activity.text ?? "<no message text>";
-  const senderName = activity.from?.name ?? "Unknown";
-  const timestamp = activity.timestamp
-    ? new Date(activity.timestamp).toLocaleString()
-    : "";
-
-  // Build deep link with chat context
-  const chatId = activity.conversation.id;
-  const messageId = activity.id;
-  const contextParam = encodeURIComponent(JSON.stringify({ contextType: "chat" }));
-  const deepLink = `https://teams.microsoft.com/l/message/${encodeURIComponent(chatId)}/${messageId}?context=${contextParam}`;
-
-  // Return Adaptive Card JSON
-  return {
-    type: "AdaptiveCard",
-    version: "1.4",
-    body: [
-      {
-        type: "TextBlock",
-        text: `"${messageText}"`,
-        wrap: true,
-        weight: "Bolder",
-        color: "Accent",
-        spacing: "Medium"
-      },
-      {
-        type: "TextBlock",
-        text: `— ${senderName}${timestamp ? `, ${timestamp}` : ""}`,
-        isSubtle: true,
-        wrap: true,
-        spacing: "None"
-      }
-    ],
-    actions: [
-      {
-        type: "Action.OpenUrl",
-        title: "View Original Message",
-        url: deepLink
-      }
-    ],
-    $schema: "http://adaptivecards.io/schemas/adaptive-card.json"
-  };
-}
-
-/**
- * Create an Adaptive Card from a stored message record
- */
-export function createQuotedAdaptiveCardFromRecord(message: MessageRecord, conversationId: string): any {
+export function createCitationFromRecord(message: MessageRecord, conversationId: string): CitationAppearance {
   if (!message.activity_id) {
     throw new Error("Message record missing activity_id for deep linking");
   }
 
   const messageText = message.content ?? "<no message text>";
   const senderName = message.name ?? "Unknown";
-  const timestamp = message.timestamp
-    ? new Date(message.timestamp).toLocaleString()
-    : "";
+  
+  // Format timestamp for context
+  const messageDate = new Date(message.timestamp);
+  const formattedDate = messageDate.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric', 
+    hour: 'numeric', 
+    minute: '2-digit',
+    hour12: true 
+  });
 
   // Build deep link with chat context
   const chatId = conversationId;
@@ -109,35 +64,20 @@ export function createQuotedAdaptiveCardFromRecord(message: MessageRecord, conve
   const contextParam = encodeURIComponent(JSON.stringify({ contextType: "chat" }));
   const deepLink = `https://teams.microsoft.com/l/message/${encodeURIComponent(chatId)}/${messageId}?context=${contextParam}`;
 
-  // Return Adaptive Card JSON
+  // Create citation with message content and timestamp context
+  const maxContentLength = 120; // Leave room for timestamp info
+  const truncatedContent = messageText.length > maxContentLength ? 
+    messageText.substring(0, maxContentLength) + '...' : 
+    messageText;
+  const abstractText = `${formattedDate}: "${truncatedContent}"`;
+  
+  const titleText = `Message from ${senderName}`.length > 80 ? `${senderName}` : `Message from ${senderName}`;
+
   return {
-    type: "AdaptiveCard",
-    version: "1.4",
-    body: [
-      {
-        type: "TextBlock",
-        text: `"${messageText}"`,
-        wrap: true,
-        weight: "Bolder",
-        color: "Accent",
-        spacing: "Medium"
-      },
-      {
-        type: "TextBlock",
-        text: `— ${senderName}${timestamp ? `, ${timestamp}` : ""}`,
-        isSubtle: true,
-        wrap: true,
-        spacing: "None"
-      }
-    ],
-    actions: [
-      {
-        type: "Action.OpenUrl",
-        title: "View Original Message",
-        url: deepLink
-      }
-    ],
-    $schema: "http://adaptivecards.io/schemas/adaptive-card.json"
+    name: titleText,
+    url: deepLink,
+    abstract: abstractText,
+    keywords: senderName ? [senderName] : undefined
   };
 }
 
@@ -184,84 +124,111 @@ function searchMessages(
   }
 }
 
+
+
 /**
- * Create the search prompt for a specific conversation
+ * Refactored Search Capability that implements the unified capability interface
  */
-export function createSearchPrompt(
-  conversationId: string,
-  userTimezone?: string,
-  adaptiveCardsArray?: any[]
-): ChatPrompt {
-  const searchModelConfig = getModelConfig('search');
+export class SearchCapability extends BaseCapability {
+  readonly name = 'search';
   
-  // Get current date and timezone info for the LLM
-  const currentDate = new Date().toISOString();
-  const timezone = userTimezone || 'UTC';
-  
-  const prompt = new ChatPrompt({
-    instructions: `${SEARCH_PROMPT}
+  createPrompt(config: CapabilityConfig): ChatPrompt {
+    this.logInit(config.conversationId, config.userTimezone);
+    
+    const searchModelConfig = this.getModelConfig('search');
+    
+    // Build additional time context if pre-calculated times are provided
+    let timeContext = '';
+    if (config.calculatedStartTime && config.calculatedEndTime) {
+      console.log(`🕒 Search Capability received pre-calculated time range: ${config.timespanDescription || 'calculated timespan'} (${config.calculatedStartTime} to ${config.calculatedEndTime})`);
+      timeContext = `
+
+IMPORTANT: Pre-calculated time range available:
+- Start: ${config.calculatedStartTime}
+- End: ${config.calculatedEndTime}
+- Description: ${config.timespanDescription || 'calculated timespan'}
+
+When searching messages, use these exact timestamps instead of calculating your own. This ensures consistency with the Manager's time calculations and reduces token usage.`;
+    }
+    
+    // Get current date and timezone info for the LLM
+    const currentDate = new Date().toISOString();
+    const timezone = config.userTimezone || 'UTC';
+    
+    const instructions = `${SEARCH_PROMPT}
 
 CURRENT CONTEXT:
 - Current date/time: ${currentDate}
 - User timezone: ${timezone}
 - When calculating time ranges like "earlier today", "yesterday", use the current time and timezone above
-- Always provide start_time and end_time in ISO format when searching for time-based queries`,
-    model: new OpenAIChatModel({
-      model: searchModelConfig.model,
-      apiKey: searchModelConfig.apiKey,
-      endpoint: searchModelConfig.endpoint,
-      apiVersion: searchModelConfig.apiVersion,
-    }),
-  })
-  .function('search_messages', 'Search for messages in the conversation history', SEARCH_MESSAGES_SCHEMA, async (args: any) => {
-    const { keywords, participants = [], start_time, end_time, max_results = 10 } = args;
+- Always provide start_time and end_time in ISO format when searching for time-based queries${timeContext}`;
     
-    // Search for matching messages
-    const matchingMessages = searchMessages(
-      conversationId,
-      keywords,
-      participants,
-      start_time,
-      end_time,
-      max_results
-    );
-    
-    if (matchingMessages.length === 0) {
-      return 'No messages found matching your search criteria. Try different keywords or a broader time range.';
-    }
-    
-    // Group messages by time periods for better context
-    const groupedMessages = groupMessagesByTime(matchingMessages);
-    
-    // Create a summary response
-    let response = `Found ${matchingMessages.length} messages matching your search:\n\n`;
-    
-    groupedMessages.forEach(group => {
-      response += `**${group.period}** (${group.messages.length} messages)\n`;
-      group.messages.slice(0, 3).forEach(msg => {
-        const preview = msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content;
-        response += `• ${msg.name}: "${preview}"\n`;
-      });
-      if (group.messages.length > 3) {
-        response += `  ... and ${group.messages.length - 3} more\n`;
+    const prompt = new ChatPrompt({
+      instructions,
+      model: new OpenAIChatModel({
+        model: searchModelConfig.model,
+        apiKey: searchModelConfig.apiKey,
+        endpoint: searchModelConfig.endpoint,
+        apiVersion: searchModelConfig.apiVersion,
+      }),
+    })
+    .function('search_messages', 'Search for messages in the conversation history', SEARCH_MESSAGES_SCHEMA, async (args: any) => {
+      const { keywords, participants = [], start_time, end_time, max_results = 10 } = args;
+      
+      // Search for matching messages
+      const matchingMessages = searchMessages(
+        config.conversationId,
+        keywords,
+        participants,
+        start_time,
+        end_time,
+        max_results
+      );
+      
+      if (matchingMessages.length === 0) {
+        return 'No messages found matching your search criteria. Try different keywords or a broader time range.';
       }
-      response += '\n';
-    });
+      
+      // Group messages by time periods for better context
+      const groupedMessages = groupMessagesByTime(matchingMessages);
+      
+      // Create a summary response
+      let response = `Found ${matchingMessages.length} messages matching your search:\n\n`;
+      
+      groupedMessages.forEach(group => {
+        response += `**${group.period}** (${group.messages.length} messages)\n`;
+        group.messages.slice(0, 3).forEach(msg => {
+          const preview = msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content;
+          response += `• ${msg.name}: "${preview}"\n`;
+        });
+        if (group.messages.length > 3) {
+          response += `  ... and ${group.messages.length - 3} more\n`;
+        }
+        response += '\n';
+      });
 
-    // Create adaptive cards for the first few results (limit to 5 to avoid overwhelming the user)
-    const cardsToShow = matchingMessages.slice(0, 5);
-    const adaptiveCards = cardsToShow.map(msg => createQuotedAdaptiveCardFromRecord(msg, conversationId));
+      // Create citations for the first few results (limit to 5 to avoid overwhelming the user)
+      const messagesToCite = matchingMessages.slice(0, 5);
+      const citations = messagesToCite.map(msg => createCitationFromRecord(msg, config.conversationId));
+      
+      // If we have an array to store citations, add them there for the manager to access
+      if (config.citationsArray) {
+        config.citationsArray.push(...citations);
+      }
+      
+      // Return just the summary text (citations are handled via the shared array)
+      return response;
+    });
     
-    // If we have an array to store cards, add them there for the manager to access
-    if (adaptiveCardsArray) {
-      adaptiveCardsArray.push(...adaptiveCards);
-    }
-    
-    // Return just the summary text (adaptive cards are handled via the shared array)
-    return response;
-  });
+    console.log(`🔍 Search Capability created with unified interface`);
+    return prompt;
+  }
   
-  return prompt;
+  getFunctionSchemas(): Array<{name: string, schema: any}> {
+    return [
+      { name: 'search_messages', schema: SEARCH_MESSAGES_SCHEMA }
+    ];
+  }
 }
 
 /**

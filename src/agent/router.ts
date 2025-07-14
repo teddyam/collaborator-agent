@@ -1,8 +1,9 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
+import { CitationAppearance } from '@microsoft/teams.api';
 import { SqliteKVStore } from '../storage/storage';
-import { createSummarizerPrompt } from '../capabilities/summarize';
-import { createActionItemsPrompt } from '../capabilities/actionItems';
-import { createSearchPrompt } from '../capabilities/search';
+import { SummarizerCapability } from '../capabilities/summarize';
+import { ActionItemsCapability } from '../capabilities/actionItems';
+import { SearchCapability } from '../capabilities/search';
 
 // Router that provides specific prompts for different capability types
 export async function routeToPrompt(
@@ -11,24 +12,43 @@ export async function routeToPrompt(
   storage: SqliteKVStore, 
   participants: Array<{name: string, id: string}> = [], 
   userTimezone?: string,
-  adaptiveCardsArray?: any[]
+  citationsArray?: CitationAppearance[]
 ): Promise<ChatPrompt> {
   console.log(`🔀 Routing to ${capabilityType} capability for conversation: ${conversationId}`);
   
   switch (capabilityType.toLowerCase()) {
     case 'summarizer':
-      return createSummarizerPrompt(conversationId, userTimezone);
+      const summarizerCapability = new SummarizerCapability();
+      return summarizerCapability.createPrompt({
+        conversationId,
+        userTimezone
+      });
     
     case 'actionitems':
     case 'action_items':
-      return createActionItemsPrompt(conversationId, storage, participants, false, undefined, undefined, userTimezone);
+      const actionItemsCapability = new ActionItemsCapability();
+      return actionItemsCapability.createPrompt({
+        conversationId,
+        storage,
+        availableMembers: participants,
+        userTimezone
+      });
     
     case 'search':
-      return createSearchPrompt(conversationId, userTimezone, adaptiveCardsArray);
+      const searchCapability = new SearchCapability();
+      return searchCapability.createPrompt({
+        conversationId,
+        userTimezone,
+        citationsArray
+      });
     
     default:
       console.warn(`⚠️ Unknown capability type: ${capabilityType}, defaulting to summarizer`);
-      return createSummarizerPrompt(conversationId, userTimezone);
+      const defaultSummarizerCapability = new SummarizerCapability();
+      return defaultSummarizerCapability.createPrompt({
+        conversationId,
+        userTimezone
+      });
   }
 }
 
@@ -39,7 +59,14 @@ export function createCapabilityRouter(): {
 } {
   const routes = new Map<string, (conversationId: string, userTimezone?: string) => ChatPrompt>();
   
-  routes.set('summarizer', createSummarizerPrompt);
+  // Set default route using the new capability interface
+  routes.set('summarizer', (conversationId: string, userTimezone?: string) => {
+    const summarizerCapability = new SummarizerCapability();
+    return summarizerCapability.createPrompt({
+      conversationId,
+      userTimezone
+    });
+  });
   
   return {
     addRoute: (capabilityType: string, factory: (conversationId: string, userTimezone?: string) => ChatPrompt) => {
