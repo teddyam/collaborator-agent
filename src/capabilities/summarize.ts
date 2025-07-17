@@ -1,7 +1,7 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { getRecentMessages, getMessagesByTimeRange, getMessagesWithTimestamps } from '../storage/message';
-import { SUMMARY_PROMPT } from '../agent/instructions';
+import { SUMMARY_PROMPT } from '../agent/prompt';
 import { BaseCapability, CapabilityConfig } from './capability';
 
 // Function schemas for the summarizer

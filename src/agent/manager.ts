@@ -2,7 +2,7 @@ import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { CitationAppearance } from '@microsoft/teams.api';
 import { SqliteKVStore } from '../storage/storage';
-import { MANAGER_PROMPT } from './instructions';
+import { MANAGER_PROMPT } from './prompt';
 import { getModelConfig } from '../utils/config';
 import { getConversationParticipantsFromAPI } from '../capabilities/actionItems';
 import { CapabilityRouter } from './router';

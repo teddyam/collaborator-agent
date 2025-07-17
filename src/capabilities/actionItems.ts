@@ -2,7 +2,7 @@ import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { ActionItem } from '../storage/storage';
 import { getMessagesByTimeRange } from '../storage/message';
-import { ACTION_ITEMS_PROMPT } from '../agent/instructions';
+import { ACTION_ITEMS_PROMPT } from '../agent/prompt';
 import { BaseCapability, CapabilityConfig } from './capability';
 
 // Function schemas for the action items capability

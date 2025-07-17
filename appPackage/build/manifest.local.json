@@ -4,8 +4,8 @@
     "manifestVersion": "1.20",
     "id": "67c878ba-4123-403d-8ffb-c204cce65d04",
     "name": {
-        "short": "collab-ts-local",
-        "full": "Collab Ts"
+        "short": "Collab Agent",
+        "full": "Collab Agent"
     },
     "developer": {
         "name": "Microsoft",
@@ -53,7 +53,8 @@
     ],
     "validDomains": [
         "xkz068jh-3978.usw2.devtunnels.ms",
-        "*.botframework.com"
+        "*.botframework.com",
+        "collab-agent.azurewebsites.net"
     ],
     "webApplicationInfo": {
         "id": "67c878ba-4123-403d-8ffb-c204cce65d04",
@@ -63,7 +64,7 @@
         "permissions": {
             "resourceSpecific": [
                 {
-                    "name": "ChatMember.Read.Chat",
+                    "name": "ChatMessage.Read.Chat",
                     "type": "Application"
                 }
             ]

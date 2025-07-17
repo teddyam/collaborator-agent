@@ -24,12 +24,9 @@ export class CapabilityRouter {
 
     switch (capabilityType.toLowerCase()) {
       case 'summarizer':
-      case 'summary':
         return await this.summarizerCapability.processRequest(userRequest, config);
 
       case 'actionitems':
-      case 'action_items':
-      case 'action-items':
         return await this.actionItemsCapability.processRequest(userRequest, config);
 
       case 'search':

@@ -3,7 +3,7 @@ import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { CitationAppearance } from '@microsoft/teams.api';
 import { MessageRecord } from '../storage/storage';
 import { getMessagesByTimeRange } from '../storage/message';
-import { SEARCH_PROMPT } from '../agent/instructions';
+import { SEARCH_PROMPT } from '../agent/prompt';
 import { BaseCapability, CapabilityConfig } from './capability';
 
 // Function schemas for search operations

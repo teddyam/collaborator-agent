@@ -2,7 +2,49 @@
 .env
 .env.*
 env/
+
 # Ignore node_modules
 node_modules/
 
+# Ignore database files
 src/storage/conversations.db
+
+# Deployment and build artifacts
+dist/
+build/
+*.zip
+*.tgz
+*.tar.gz
+
+# Teams app packages
+appPackage/build/
+*.zip
+
+# Azure deployment files
+.azure/
+arm-outputs.json
+.deployment
+deploy.cmd
+deploy.sh
+
+# Docker deployment
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# CI/CD and deployment configs
+.github/workflows/
+.vscode/settings.json
+.vscode/launch.json
+azure-pipelines.yml
+*.deployment.json
+
+# TeamsFx deployment files
+.fx/
+teamsapp.*.yml.user
+.localSettings
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
