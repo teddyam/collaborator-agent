@@ -105,7 +105,6 @@ export class ManagerPrompt {
                 required: ['contextID']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'summarizer';
-                console.log(`📋 DELEGATION: Delegating to Summarizer Capability via Router for contextID: ${args.contextID}`);
 
                 const result = await this.router.processRequest('summarizer', args.contextID, {
                     calculatedStartTime: args.calculated_start_time,
@@ -117,8 +116,6 @@ export class ManagerPrompt {
                     console.error(`❌ Error in Summarizer Capability: ${result.error}`);
                     return `Error in Summarizer Capability: ${result.error}`;
                 }
-
-                console.log(`📋 DELEGATION: Summarizer Capability completed. Response length: ${result.response?.length || 0}`);
                 return result.response || 'No response from Summarizer Capability';
             })
             .function('delegate_to_action_items', 'Delegate task management, action item creation, or assignment tracking to the Action Items Capability', {
@@ -144,7 +141,6 @@ export class ManagerPrompt {
                 required: ['contextID']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'action_items';
-                console.log(`📋 DELEGATION: Delegating to Action Items Capability via Router for contextID: ${args.contextID}`);
 
                 const result = await this.router.processRequest('actionitems', args.contextID, {
                     storage: this.storage,
@@ -178,7 +174,6 @@ export class ManagerPrompt {
                 required: ['contextID']
             }, async (args: any) => {
                 this.lastDelegatedCapability = 'search';
-                console.log(`🔍 DELEGATION: Delegating to Search Capability via Router for contextID: ${args.contextID}`);
 
                 // Create a shared array for citations
                 const citationsArray: CitationAppearance[] = [];
@@ -196,7 +191,6 @@ export class ManagerPrompt {
                 return result.response || 'No response from Search Capability';
             });
 
-        console.log('🎯 Manager initialized with delegation capabilities');
         return prompt;
     }
 
@@ -207,7 +201,6 @@ export class ManagerPrompt {
         }
         
         try {
-            console.log(`🎯 Manager processing request: "${context.text}" for conversation: ${context.conversationKey}`);
             
             // Reset delegation state
             this.lastDelegatedCapability = null;
@@ -230,8 +223,6 @@ IMPORTANT: If the user's request mentions any time periods, extract the time-rel
 Please analyze this request and delegate it to the appropriate specialized capability. Use the CONTEXT_ID in your function call. Return ONLY the response from the delegated capability without any additional commentary.
 For action item requests in personal chats, use the user's ID for personal action item management.
 `);
-
-            console.log(`🎯 Delegated to capability: ${this.lastDelegatedCapability || 'direct (no delegation)'}`);
 
             return {
                 response: response.content || 'No response generated',
