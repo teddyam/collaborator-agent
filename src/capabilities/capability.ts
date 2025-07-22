@@ -1,20 +1,14 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { CitationAppearance } from '@microsoft/teams.api';
 import { SqliteKVStore } from '../storage/storage';
+import { MessageContext, getContextById } from '../utils/messageContext';
 
 /**
- * Configuration interface for creating capabilities
+ * Configuration interface for capability-specific options
  */
-export interface CapabilityConfig {
-  conversationId: string;
-  userTimezone?: string;
-  
-  // Action Items specific
+export interface CapabilityOptions {
+  // Storage for action items
   storage?: SqliteKVStore;
-  availableMembers?: Array<{name: string, id: string}>;
-  isPersonalChat?: boolean;
-  currentUserId?: string;
-  currentUserName?: string;
   
   // Search specific
   citationsArray?: CitationAppearance[];
@@ -46,12 +40,12 @@ export interface Capability {
   /**
    * Create a ChatPrompt instance for this capability
    */
-  createPrompt(config: CapabilityConfig): ChatPrompt;
+  createPrompt(contextID: string, options?: CapabilityOptions): ChatPrompt;
   
   /**
    * Process a user request using this capability
    */
-  processRequest(userRequest: string, config: CapabilityConfig): Promise<CapabilityResult>;
+  processRequest(contextID: string, options?: CapabilityOptions): Promise<CapabilityResult>;
   
   /**
    * Get the function schemas that this capability provides
@@ -65,26 +59,34 @@ export interface Capability {
 export abstract class BaseCapability implements Capability {
   abstract readonly name: string;
   
-  abstract createPrompt(config: CapabilityConfig): ChatPrompt;
+  abstract createPrompt(contextID: string, options?: CapabilityOptions): ChatPrompt;
   
   abstract getFunctionSchemas(): Array<{name: string, schema: any}>;
   
   /**
    * Default implementation of processRequest that creates a prompt and sends the request
    */
-  async processRequest(userRequest: string, config: CapabilityConfig): Promise<CapabilityResult> {
+  async processRequest(contextID: string, options: CapabilityOptions = {}): Promise<CapabilityResult> {
+    const messageContext = getContextById(contextID);
+    if (!messageContext) {
+      return {
+        response: '',
+        error: `Context not found for activity ID: ${contextID}`
+      };
+    }
+    
     try {
-      const prompt = this.createPrompt(config);
+      const prompt = this.createPrompt(contextID, options);
       
       // Build enhanced request with time parameters if provided
-      let enhancedRequest = userRequest;
-      if (config.calculatedStartTime && config.calculatedEndTime) {
-        enhancedRequest = `${userRequest}
+      let enhancedRequest = messageContext.text;
+      if (options.calculatedStartTime && options.calculatedEndTime) {
+        enhancedRequest = `${messageContext.text}
 
 Pre-calculated time range:
-- Start: ${config.calculatedStartTime}
-- End: ${config.calculatedEndTime}
-- Description: ${config.timespanDescription || 'calculated timespan'}
+- Start: ${options.calculatedStartTime}
+- End: ${options.calculatedEndTime}
+- Description: ${options.timespanDescription || 'calculated timespan'}
 
 Use these exact timestamps for any time-based queries if needed.`;
       }
@@ -93,7 +95,7 @@ Use these exact timestamps for any time-based queries if needed.`;
       
       return {
         response: response.content || 'No response generated',
-        citations: config.citationsArray // Return citations if they were populated during execution
+        citations: options.citationsArray // Return citations if they were populated during execution
       };
     } catch (error) {
       return {
@@ -115,10 +117,8 @@ Use these exact timestamps for any time-based queries if needed.`;
   /**
    * Helper method to log capability initialization
    */
-  protected logInit(conversationId: string, userTimezone?: string) {
-    console.log(`📋 Creating ${this.name} Capability for conversation: ${conversationId}`);
-    if (userTimezone) {
-      console.log(`🕒 Using timezone: ${userTimezone}`);
-    }
+  protected logInit(messageContext: MessageContext) {
+    console.log(`📋 Creating ${this.name} Capability for conversation: ${messageContext.conversationKey}`);
+    console.log(`🕒 Current date/time: ${messageContext.currentDateTime}`);
   }
 }

@@ -2,7 +2,7 @@
     "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.20/MicrosoftTeams.schema.json",
     "version": "1.0.0",
     "manifestVersion": "1.20",
-    "id": "67c878ba-4123-403d-8ffb-c204cce65d04",
+    "id": "0be1f4aa-8f9e-4e2d-86b5-bbce3d120ec4",
     "name": {
         "short": "Collab Agent",
         "full": "Collab Agent"
@@ -39,7 +39,7 @@
     ],
     "bots": [
         {
-            "botId": "67c878ba-4123-403d-8ffb-c204cce65d04",
+            "botId": "0be1f4aa-8f9e-4e2d-86b5-bbce3d120ec4",
             "scopes": [
                 "personal",
                 "team",
@@ -52,13 +52,12 @@
         }
     ],
     "validDomains": [
-        "xkz068jh-3978.usw2.devtunnels.ms",
-        "*.botframework.com",
-        "collab-agent.azurewebsites.net"
+        "h3vmh41g-3978.usw2.devtunnels.ms",
+        "*.botframework.com"
     ],
     "webApplicationInfo": {
-        "id": "67c878ba-4123-403d-8ffb-c204cce65d04",
-        "resource": "api://botid-67c878ba-4123-403d-8ffb-c204cce65d04"
+        "id": "0be1f4aa-8f9e-4e2d-86b5-bbce3d120ec4",
+        "resource": "api://botid-0be1f4aa-8f9e-4e2d-86b5-bbce3d120ec4"
     },
     "authorization": {
         "permissions": {
