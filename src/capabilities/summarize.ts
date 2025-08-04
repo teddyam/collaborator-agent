@@ -3,7 +3,7 @@ import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { getRecentMessages, getMessagesByTimeRange, getMessagesWithTimestamps } from '../storage/message';
 import { SUMMARY_PROMPT } from '../agent/prompt';
 import { BaseCapability, CapabilityOptions } from './capability';
-import { getContextById } from '../utils/messageContext';
+import { MessageContext } from '../utils/messageContext';
 
 // Function schemas for the summarizer
 const GET_RECENT_MESSAGES_SCHEMA = {
@@ -55,10 +55,9 @@ const EMPTY_SCHEMA = {
 export class SummarizerCapability extends BaseCapability {
   readonly name = 'summarizer';
   
-  createPrompt(contextID: string, options: CapabilityOptions = {}): ChatPrompt {
-    const messageContext = getContextById(contextID);
+  createPrompt(messageContext: MessageContext, options: CapabilityOptions = {}): ChatPrompt {
     if (!messageContext) {
-      throw new Error(`Context not found for activity ID: ${contextID}`);
+      throw new Error(`Message context is required for summarizer capability`);
     }
     
     this.logInit(messageContext);

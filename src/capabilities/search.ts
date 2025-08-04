@@ -5,7 +5,7 @@ import { MessageRecord } from '../storage/storage';
 import { getMessagesByTimeRange } from '../storage/message';
 import { SEARCH_PROMPT } from '../agent/prompt';
 import { BaseCapability, CapabilityOptions } from './capability';
-import { getContextById } from '../utils/messageContext';
+import { MessageContext } from '../utils/messageContext';
 
 // Function schemas for search operations
 const SEARCH_MESSAGES_SCHEMA = {
@@ -133,10 +133,9 @@ function searchMessages(
 export class SearchCapability extends BaseCapability {
   readonly name = 'search';
   
-  createPrompt(contextID: string, options: CapabilityOptions = {}): ChatPrompt {
-    const messageContext = getContextById(contextID);
+  createPrompt(messageContext: MessageContext, options: CapabilityOptions = {}): ChatPrompt {
     if (!messageContext) {
-      throw new Error(`Context not found for activity ID: ${contextID}`);
+      throw new Error(`Message context is required for search capability`);
     }
     
     this.logInit(messageContext);

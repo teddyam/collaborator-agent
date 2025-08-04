@@ -4,7 +4,7 @@ import { ActionItem } from '../storage/storage';
 import { getMessagesByTimeRange } from '../storage/message';
 import { ACTION_ITEMS_PROMPT } from '../agent/prompt';
 import { BaseCapability, CapabilityOptions } from './capability';
-import { getContextById } from '../utils/messageContext';
+import { MessageContext } from '../utils/messageContext';
 
 // Function schemas for the action items capability
 const ANALYZE_FOR_ACTION_ITEMS_SCHEMA = {
@@ -92,34 +92,14 @@ const GET_CHAT_MEMBERS_SCHEMA = {
  */
 export class ActionItemsCapability extends BaseCapability {
   readonly name = 'action_items';
-  private availableMembers: Array<{name: string, id: string}> = [];
   
   constructor() {
     super();
   }
 
-  async initializeMembers(contextID: string): Promise<void> {
-    const messageContext = getContextById(contextID);
+  createPrompt(messageContext: MessageContext, options: CapabilityOptions = {}): ChatPrompt {
     if (!messageContext) {
-      return;
-    }
-
-    // Fetch available members if API is provided and it's not a personal chat
-    if (messageContext.api && !messageContext.isPersonalChat) {
-      try {
-        this.availableMembers = await getConversationParticipantsFromAPI(messageContext.api, messageContext.conversationKey);
-        console.log(`👥 Action Items Capability initialized with ${this.availableMembers.length} members from Teams API`);
-      } catch (error) {
-        console.warn(`⚠️ Failed to fetch conversation members during initialization:`, error);
-        this.availableMembers = [];
-      }
-    }
-  }
-  
-  createPrompt(contextID: string, options: CapabilityOptions = {}): ChatPrompt {
-    const messageContext = getContextById(contextID);
-    if (!messageContext) {
-      throw new Error(`Context not found for activity ID: ${contextID}`);
+      throw new Error(`Message context is required for action items capability`);
     }
     
     this.logInit(messageContext);
@@ -130,8 +110,8 @@ export class ActionItemsCapability extends BaseCapability {
     
     const actionItemsModelConfig = this.getModelConfig('actionItems');
     
-    // Members should already be fetched during initialization
-    console.log(`👥 Action Items Capability using ${this.availableMembers.length} pre-fetched members`);
+    // Use members from context
+    console.log(`👥 Action Items Capability using ${messageContext.members.length} members from context`);
     
     // Build additional time context if pre-calculated times are provided
     let timeContext = '';
@@ -183,8 +163,8 @@ When analyzing messages for action items or performing any time-based queries, u
       // Get existing action items to avoid duplicates
       const existingActionItems = options.storage!.getActionItemsByConversation(messageContext.conversationKey);
       
-      // Use pre-fetched members
-      const availableMembers = this.availableMembers;
+      // Use members from context
+      const availableMembers = messageContext.members;
       
       return JSON.stringify({
         status: 'success',
@@ -218,8 +198,8 @@ When analyzing messages for action items or performing any time-based queries, u
           // In personal chat, assign to the current user
           assignedToId = messageContext.userId;
         } else {
-          // In group chat, find the user ID from pre-fetched members
-          const assignedMember = this.availableMembers.find((member: {name: string, id: string}) => 
+          // In group chat, find the user ID from context members
+          const assignedMember = messageContext.members.find((member: {name: string, id: string}) => 
             member.name === args.assigned_to || 
             member.name.toLowerCase() === args.assigned_to.toLowerCase()
           );
@@ -338,8 +318,8 @@ When analyzing messages for action items or performing any time-based queries, u
     .function('get_chat_members', 'Get the list of available members in this chat for action item assignment', GET_CHAT_MEMBERS_SCHEMA, async () => {
       console.log(`👥 FUNCTION CALL: get_chat_members for conversation=${messageContext.conversationKey}`);
       
-      // Use pre-fetched members
-      const availableMembers = this.availableMembers;
+      // Use members from context
+      const availableMembers = messageContext.members;
       
       return JSON.stringify({
         status: 'success',
@@ -367,26 +347,6 @@ When analyzing messages for action items or performing any time-based queries, u
 /**
  * Helper function to get conversation participants using Teams API
  */
-export async function getConversationParticipantsFromAPI(api: any, conversationId: string): Promise<Array<{name: string, id: string}>> {
-  try {
-    console.log(`👥 Fetching conversation members from Teams API for conversation: ${conversationId}`);
-    const members = await api.conversations.members(conversationId).get();
-    
-    const participants = members.map((member: any) => {
-      // Try different name fields that might be available
-      const name = member.name || member.givenName || member.displayName || member.userPrincipalName || 'Unknown Member';
-      const id = member.id || member.aadObjectId || member.userId || 'unknown';
-      return { name, id };
-    }).filter((participant: any) => participant.name !== 'Unknown Member');
-    
-    console.log(`👥 Found ${participants.length} participants from Teams API:`, participants);
-    return participants;
-  } catch (error) {
-    console.error(`❌ Error fetching conversation members from Teams API:`, error);
-    throw error;
-  }
-}
-
 /**
  * Parse deadline expressions like "by tomorrow", "end of week", "by Friday" with timezone awareness
  */
