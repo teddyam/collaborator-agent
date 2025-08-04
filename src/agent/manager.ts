@@ -6,9 +6,9 @@ import { MANAGER_PROMPT } from './prompt';
 import { getModelConfig } from '../utils/config';
 import { MessageContext } from '../utils/messageContext';
 import { extractTimeRange } from '../utils/utils';
-import { SummarizerCapability } from '../capabilities/summarize';
-import { ActionItemsCapability } from '../capabilities/actionItems';
-import { SearchCapability } from '../capabilities/search';
+import { SummarizerCapability } from '../capabilities/summarizer/summarize';
+import { ActionItemsCapability } from '../capabilities/actionItems/actionItems';
+import { SearchCapability } from '../capabilities/search/search';
 
 // Result interface for manager responses
 export interface ManagerResult {

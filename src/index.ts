@@ -72,14 +72,17 @@ app.on('message', async ({ send, activity, next }) => {
     }
 
     // If this is a personal chat, always route to the manager for full conversational experience
-    if (context.isPersonalChat && context.text.trim() !== '') {
+    if (context.isPersonalChat) {
       await send({ type: 'typing' });
 
       addMessageToTracking(context.conversationKey, 'user', context.text, activity, context.userName);
 
-      const result = await manager.processRequest(context);
+      // Get recent message history for context
+      const messageHistory = storage.getRecentMessages(context.conversationKey, 10);
+      
+      const result = await manager.processRequest(context, messageHistory);
 
-      if (result.response && result.response.trim() !== '') {
+      if (result.response) {
         const sentMessageId = await finalizePromptResponse(send, result.response, result.citations);
         feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
         addMessageToTracking(context.conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
@@ -121,9 +124,9 @@ app.on('mention', async ({ send, activity, api }) => {
         return;
       }
 
-      const result = await manager.processRequest(context);
+      const result = await manager.processRequest(context, storage.getRecentMessages(context.conversationKey, 10));
 
-      if (result.response && result.response.trim() !== '') {
+      if (result.response) {
         const sentMessageId = await finalizePromptResponse(send, result.response, result.citations);
 
         feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);

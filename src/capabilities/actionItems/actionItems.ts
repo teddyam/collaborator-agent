@@ -1,89 +1,17 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
-import { ActionItem } from '../storage/storage';
-import { getMessagesByTimeRange } from '../storage/message';
-import { ACTION_ITEMS_PROMPT } from '../agent/prompt';
-import { BaseCapability, CapabilityOptions } from './capability';
-import { MessageContext } from '../utils/messageContext';
-
-// Function schemas for the action items capability
-const ANALYZE_FOR_ACTION_ITEMS_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    start_time: {
-      type: 'string' as const,
-      description: 'Start time in ISO format (e.g., 2024-01-01T00:00:00.000Z). Optional - defaults to last 24 hours.'
-    },
-    end_time: {
-      type: 'string' as const,
-      description: 'End time in ISO format (e.g., 2024-01-01T23:59:59.999Z). Optional - defaults to now.'
-    }
-  }
-};
-
-const CREATE_ACTION_ITEM_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    title: {
-      type: 'string' as const,
-      description: 'Brief title for the action item'
-    },
-    description: {
-      type: 'string' as const,
-      description: 'Detailed description of what needs to be done'
-    },
-    assigned_to: {
-      type: 'string' as const,
-      description: 'Name of the person this action item is assigned to'
-    },
-    priority: {
-      type: 'string' as const,
-      enum: ['low', 'medium', 'high', 'urgent'],
-      description: 'Priority level of the action item'
-    },
-    due_date: {
-      type: 'string' as const,
-      description: 'Optional due date in ISO format or relative expression (e.g., "tomorrow", "end of week", "next Monday"). Relative expressions are parsed using the user\'s timezone.'
-    }
-  },
-  required: ['title', 'description', 'assigned_to', 'priority']
-};
-
-const GET_ACTION_ITEMS_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    assigned_to: {
-      type: 'string' as const,
-      description: 'Filter by person assigned to (optional)'
-    },
-    status: {
-      type: 'string' as const,
-      enum: ['pending', 'in_progress', 'completed', 'cancelled'],
-      description: 'Filter by status (optional)'
-    }
-  }
-};
-
-const UPDATE_ACTION_ITEM_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    action_item_id: {
-      type: 'number' as const,
-      description: 'ID of the action item to update'
-    },
-    new_status: {
-      type: 'string' as const,
-      enum: ['pending', 'in_progress', 'completed', 'cancelled'],
-      description: 'New status for the action item'
-    }
-  },
-  required: ['action_item_id', 'new_status']
-};
-
-const GET_CHAT_MEMBERS_SCHEMA = {
-  type: 'object' as const,
-  properties: {}
-};
+import { ActionItem } from '../../storage/storage';
+import { getMessagesByTimeRange } from '../../storage/message';
+import { ACTION_ITEMS_PROMPT } from './prompt';
+import { 
+  ANALYZE_FOR_ACTION_ITEMS_SCHEMA, 
+  CREATE_ACTION_ITEM_SCHEMA, 
+  GET_ACTION_ITEMS_SCHEMA, 
+  UPDATE_ACTION_ITEM_SCHEMA, 
+  GET_CHAT_MEMBERS_SCHEMA 
+} from './schema';
+import { BaseCapability, CapabilityOptions } from '../capability';
+import { MessageContext } from '../../utils/messageContext';
 
 
 

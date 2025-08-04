@@ -1,42 +1,12 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { CitationAppearance } from '@microsoft/teams.api';
-import { MessageRecord } from '../storage/storage';
-import { getMessagesByTimeRange } from '../storage/message';
-import { SEARCH_PROMPT } from '../agent/prompt';
-import { BaseCapability, CapabilityOptions } from './capability';
-import { MessageContext } from '../utils/messageContext';
-
-// Function schemas for search operations
-const SEARCH_MESSAGES_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    keywords: {
-      type: 'array' as const,
-      items: { type: 'string' as const },
-      description: 'Keywords to search for in message content (excluding time expressions)'
-    },
-    participants: {
-      type: 'array' as const,
-      items: { type: 'string' as const },
-      description: 'Names of people who should be involved in the conversation'
-    },
-    start_time: {
-      type: 'string' as const,
-      description: 'Start time for search range (ISO format). Calculate this based on user request like "earlier today", "yesterday", etc.'
-    },
-    end_time: {
-      type: 'string' as const,
-      description: 'End time for search range (ISO format). Usually current time for "earlier today" or end of day for specific dates.'
-    },
-    max_results: {
-      type: 'number' as const,
-      description: 'Maximum number of results to return (default 10)',
-      default: 10
-    }
-  },
-  required: ['keywords']
-};
+import { MessageRecord } from '../../storage/storage';
+import { getMessagesByTimeRange } from '../../storage/message';
+import { SEARCH_PROMPT } from './prompt';
+import { SEARCH_MESSAGES_SCHEMA } from './schema';
+import { BaseCapability, CapabilityOptions } from '../capability';
+import { MessageContext } from '../../utils/messageContext';
 
 /**
  * Create a Citation object from a message record for display in Teams

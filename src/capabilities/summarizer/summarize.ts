@@ -1,53 +1,15 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
-import { getRecentMessages, getMessagesByTimeRange, getMessagesWithTimestamps } from '../storage/message';
-import { SUMMARY_PROMPT } from '../agent/prompt';
-import { BaseCapability, CapabilityOptions } from './capability';
-import { MessageContext } from '../utils/messageContext';
-
-// Function schemas for the summarizer
-const GET_RECENT_MESSAGES_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    limit: {
-      type: 'number' as const,
-      description: 'Number of recent messages to retrieve (default: 5, max: 20)',
-      minimum: 1,
-      maximum: 20
-    }
-  }
-};
-
-const GET_MESSAGES_BY_TIME_RANGE_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    start_time: {
-      type: 'string' as const,
-      description: 'Start time in ISO format (e.g., 2024-01-01T00:00:00.000Z). Optional.'
-    },
-    end_time: {
-      type: 'string' as const,
-      description: 'End time in ISO format (e.g., 2024-01-01T23:59:59.999Z). Optional.'
-    }
-  }
-};
-
-const SHOW_RECENT_MESSAGES_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    count: {
-      type: 'number' as const,
-      description: 'Number of recent messages to display (default: 5)',
-      minimum: 1,
-      maximum: 20
-    }
-  }
-};
-
-const EMPTY_SCHEMA = {
-  type: 'object' as const,
-  properties: {}
-};
+import { getRecentMessages, getMessagesByTimeRange, getMessagesWithTimestamps } from '../../storage/message';
+import { SUMMARY_PROMPT } from './prompt';
+import { 
+  GET_RECENT_MESSAGES_SCHEMA, 
+  GET_MESSAGES_BY_TIME_RANGE_SCHEMA, 
+  SHOW_RECENT_MESSAGES_SCHEMA, 
+  EMPTY_SCHEMA 
+} from './schema';
+import { BaseCapability, CapabilityOptions } from '../capability';
+import { MessageContext } from '../../utils/messageContext';
 
 /**
  * Refactored Summarizer Capability that implements the unified capability interface
