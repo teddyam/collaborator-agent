@@ -39,7 +39,7 @@ app.on("message.submit.feedback", async ({ activity, log }) => {
   }
 });
 app.on("message", async ({ send, activity, next }) => {
-  const contextID = messageContext.createMessageContext(activity);
+  const contextID = await messageContext.createMessageContext(activity);
   const context = messageContext.getContextById(contextID);
   if (!context) {
     console.error("\u274C Failed to retrieve context for activity:", activity.id);
@@ -58,11 +58,11 @@ app.on("message", async ({ send, activity, next }) => {
       }
       return;
     }
-    if (context.isPersonalChat && context.text.trim() !== "") {
+    if (context.isPersonalChat) {
       await send({ type: "typing" });
       message.addMessageToTracking(context.conversationKey, "user", context.text, activity, context.userName);
-      const result = await manager.processRequest(contextID);
-      if (result.response && result.response.trim() !== "") {
+      const result = await manager.processRequest(context);
+      if (result.response) {
         const sentMessageId = await utils.finalizePromptResponse(send, result.response, result.citations);
         feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
         message.addMessageToTracking(context.conversationKey, "assistant", result.response, { id: sentMessageId }, "AI Assistant");
@@ -81,7 +81,7 @@ app.on("message", async ({ send, activity, next }) => {
 });
 app.on("mention", async ({ send, activity, api }) => {
   await send({ type: "typing" });
-  const contextID = messageContext.createMessageContext(activity, api);
+  const contextID = await messageContext.createMessageContext(activity, api);
   const context = messageContext.getContextById(contextID);
   if (!context) {
     console.error("\u274C Failed to retrieve context for activity:", activity.id);
@@ -96,8 +96,8 @@ app.on("mention", async ({ send, activity, api }) => {
         }
         return;
       }
-      const result = await manager.processRequest(contextID);
-      if (result.response && result.response.trim() !== "") {
+      const result = await manager.processRequest(context);
+      if (result.response) {
         const sentMessageId = await utils.finalizePromptResponse(send, result.response, result.citations);
         feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
         message.addMessageToTracking(context.conversationKey, "assistant", result.response, { id: sentMessageId }, "AI Assistant");

@@ -8,9 +8,10 @@ import {
   CREATE_ACTION_ITEM_SCHEMA, 
   GET_ACTION_ITEMS_SCHEMA, 
   UPDATE_ACTION_ITEM_SCHEMA, 
-  GET_CHAT_MEMBERS_SCHEMA 
+  GET_CHAT_MEMBERS_SCHEMA,
+  ACTION_ITEMS_DELEGATION_SCHEMA 
 } from './schema';
-import { BaseCapability, CapabilityOptions } from '../capability';
+import { BaseCapability, CapabilityOptions, CapabilityDefinition } from '../capability';
 import { MessageContext } from '../../utils/messageContext';
 
 
@@ -120,13 +121,10 @@ When analyzing messages for action items or performing any time-based queries, u
       console.log(`✅ FUNCTION CALL: create_action_item - "${args.title}" assigned to ${args.assigned_to}`);
       
       try {
-        // Find the user ID for the assigned person
         let assignedToId: string | undefined;
         if (messageContext.isPersonalChat && messageContext.userId) {
-          // In personal chat, assign to the current user
           assignedToId = messageContext.userId;
         } else {
-          // In group chat, find the user ID from context members
           const assignedMember = messageContext.members.find((member: {name: string, id: string}) => 
             member.name === args.assigned_to || 
             member.name.toLowerCase() === args.assigned_to.toLowerCase()
@@ -136,10 +134,8 @@ When analyzing messages for action items or performing any time-based queries, u
         
         console.log(`🔍 Found user ID for "${args.assigned_to}": ${assignedToId || 'Not found'}`);
         
-        // Parse due_date with timezone awareness if it's a relative expression
         let parsedDueDate = args.due_date;
         if (args.due_date) {
-          // For now, default to UTC timezone - could be enhanced to extract timezone from currentDateTime
           const timezoneParsedDate = parseDeadlineWithTimezone(args.due_date, 'UTC');
           if (timezoneParsedDate) {
             parsedDueDate = timezoneParsedDate;
@@ -273,9 +269,6 @@ When analyzing messages for action items or performing any time-based queries, u
 }
 
 /**
- * Helper function to get conversation participants using Teams API
- */
-/**
  * Parse deadline expressions like "by tomorrow", "end of week", "by Friday" with timezone awareness
  */
 function parseDeadlineWithTimezone(deadlineExpression: string, userTimezone: string = 'UTC'): string | undefined {
@@ -292,15 +285,15 @@ function parseDeadlineWithTimezone(deadlineExpression: string, userTimezone: str
   if (expression.includes('tomorrow') || expression.includes('next day')) {
     const tomorrow = new Date(todayInUserTZ);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(23, 59, 59, 999); // End of day
+    tomorrow.setHours(23, 59, 59, 999);
     const tomorrowUTC = new Date(tomorrow.toLocaleString("en-US", { timeZone: "UTC" }));
     return tomorrowUTC.toISOString();
   }
   
   if (expression.includes('end of week') || expression.includes('this friday') || expression.includes('friday')) {
     const endOfWeek = new Date(todayInUserTZ);
-    const daysUntilFriday = (5 - todayInUserTZ.getDay() + 7) % 7; // 5 = Friday
-    endOfWeek.setDate(todayInUserTZ.getDate() + (daysUntilFriday || 7)); // If today is Friday, next Friday
+    const daysUntilFriday = (5 - todayInUserTZ.getDay() + 7) % 7;
+    endOfWeek.setDate(todayInUserTZ.getDate() + (daysUntilFriday || 7));
     endOfWeek.setHours(23, 59, 59, 999);
     const endOfWeekUTC = new Date(endOfWeek.toLocaleString("en-US", { timeZone: "UTC" }));
     return endOfWeekUTC.toISOString();
@@ -322,10 +315,9 @@ function parseDeadlineWithTimezone(deadlineExpression: string, userTimezone: str
     return endOfMonthUTC.toISOString();
   }
   
-  // Try to parse specific dates (this is basic - could be enhanced)
   const dateMatch = expression.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
   if (dateMatch) {
-    const month = parseInt(dateMatch[1]) - 1; // JS months are 0-indexed
+    const month = parseInt(dateMatch[1]) - 1;
     const day = parseInt(dateMatch[2]);
     const year = dateMatch[3] ? parseInt(dateMatch[3]) : todayInUserTZ.getFullYear();
     
@@ -336,3 +328,21 @@ function parseDeadlineWithTimezone(deadlineExpression: string, userTimezone: str
   
   return undefined;
 }
+
+// Capability definition for manager registration
+export const ACTION_ITEMS_CAPABILITY_DEFINITION: CapabilityDefinition = {
+  name: 'delegate_to_action_items',
+  description: 'Delegate task management, action item creation, or assignment tracking to the Action Items Capability',
+  schema: ACTION_ITEMS_DELEGATION_SCHEMA,
+  handler: async (args: any, context: MessageContext, state: any, storage: any) => {
+    state.delegatedCapability = 'action_items';
+    const actionItemsCapability = new ActionItemsCapability();
+    const result = await actionItemsCapability.processRequest(context, {
+      storage: storage,
+      calculatedStartTime: args.calculated_start_time,
+      calculatedEndTime: args.calculated_end_time,
+      timespanDescription: args.timespan_description
+    });
+    return result.response || 'No response from Action Items Capability';
+  }
+};

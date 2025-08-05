@@ -6,9 +6,10 @@ import {
   GET_RECENT_MESSAGES_SCHEMA, 
   GET_MESSAGES_BY_TIME_RANGE_SCHEMA, 
   SHOW_RECENT_MESSAGES_SCHEMA, 
-  EMPTY_SCHEMA 
+  EMPTY_SCHEMA,
+  SUMMARIZER_DELEGATION_SCHEMA 
 } from './schema';
-import { BaseCapability, CapabilityOptions } from '../capability';
+import { BaseCapability, CapabilityOptions, CapabilityDefinition } from '../capability';
 import { MessageContext } from '../../utils/messageContext';
 
 /**
@@ -141,3 +142,24 @@ When retrieving messages for summarization, use these exact timestamps instead o
     ];
   }
 }
+
+// Capability definition for manager registration
+export const SUMMARIZER_CAPABILITY_DEFINITION: CapabilityDefinition = {
+  name: 'delegate_to_summarizer',
+  description: 'Delegate conversation analysis, summarization, or message retrieval tasks to the Summarizer Capability',
+  schema: SUMMARIZER_DELEGATION_SCHEMA,
+  handler: async (args: any, context: MessageContext, state: any) => {
+    state.delegatedCapability = 'summarizer';
+    const summarizerCapability = new SummarizerCapability();
+    const result = await summarizerCapability.processRequest(context, {
+      calculatedStartTime: args.calculated_start_time,
+      calculatedEndTime: args.calculated_end_time,
+      timespanDescription: args.timespan_description
+    });
+    if (result.error) {
+      console.error(`❌ Error in Summarizer Capability: ${result.error}`);
+      return `Error in Summarizer Capability: ${result.error}`;
+    }
+    return result.response || 'No response from Summarizer Capability';
+  }
+};

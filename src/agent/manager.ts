@@ -6,9 +6,7 @@ import { MANAGER_PROMPT } from './prompt';
 import { getModelConfig } from '../utils/config';
 import { MessageContext } from '../utils/messageContext';
 import { extractTimeRange } from '../utils/utils';
-import { SummarizerCapability } from '../capabilities/summarizer/summarize';
-import { ActionItemsCapability } from '../capabilities/actionItems/actionItems';
-import { SearchCapability } from '../capabilities/search/search';
+import { CAPABILITY_DEFINITIONS } from '../capabilities/registry';
 
 // Result interface for manager responses
 export interface ManagerResult {
@@ -26,18 +24,15 @@ interface ManagerState {
 // Manager prompt that coordinates all sub-tasks
 export class ManagerPrompt {
     private storage: SqliteKVStore;
-    private basePrompt: ChatPrompt;
 
     constructor(storage: SqliteKVStore) {
         this.storage = storage;
-        this.basePrompt = this.createBasePrompt();
     }
 
-    // Create the base prompt structure (defined once)
-    private createBasePrompt(): ChatPrompt {
+    // Create a prompt with context-specific handlers
+    private createManagerPrompt(): ChatPrompt {
         const managerModelConfig = getModelConfig('manager');
-
-        return new ChatPrompt({
+        let prompt = new ChatPrompt({
             instructions: MANAGER_PROMPT,
             model: new OpenAIChatModel({
                 model: managerModelConfig.model,
@@ -45,146 +40,56 @@ export class ManagerPrompt {
                 endpoint: managerModelConfig.endpoint,
                 apiVersion: managerModelConfig.apiVersion,
             }),
-        });
-    }
-
-    // Create a prompt with context-specific handlers
-    private createPromptWithHandlers(context: MessageContext, state: ManagerState): ChatPrompt {
-        let prompt = this.basePrompt
-            .function('calculate_time_range', 'Parse natural language time expressions and calculate exact start/end times for time-based queries', {
-                type: 'object',
-                properties: {
-                    time_phrase: {
-                        type: 'string',
-                        description: 'Natural language time expression extracted from the user request (e.g., "yesterday", "last week", "2 days ago", "past 3 hours")'
-                    }
-                },
-                required: ['time_phrase']
-            }, async (args: any) => {
-                console.log(`🕒 FUNCTION CALL: calculate_time_range - parsing "${args.time_phrase}"`);
-                
-                const timeRange = extractTimeRange(args.time_phrase);
-                
-                if (!timeRange) {
-                    console.warn(`⚠️ Could not parse time phrase: "${args.time_phrase}"`);
-                    return JSON.stringify({
-                        status: 'error',
-                        message: `Could not parse time expression: "${args.time_phrase}"`
-                    });
+        }).function('calculate_time_range', 'Parse natural language time expressions and calculate exact start/end times for time-based queries', {
+            type: 'object' as const,
+            properties: {
+                time_phrase: {
+                    type: 'string' as const,
+                    description: 'Natural language time expression extracted from the user request (e.g., "yesterday", "last week", "2 days ago", "past 3 hours")'
                 }
-                
-                const startTime = timeRange.from.toISOString();
-                const endTime = timeRange.to.toISOString();
-                const description = `${args.time_phrase} (${timeRange.from.toLocaleDateString()} to ${timeRange.to.toLocaleDateString()})`;
-                
-                console.log(`📅 Parsed "${args.time_phrase}" to: ${startTime} → ${endTime}`);
-                
+            },
+            required: ['time_phrase']
+        }, async (args: any) => {
+            console.log(`🕒 FUNCTION CALL: calculate_time_range - parsing "${args.time_phrase}"`);
+
+            const timeRange = extractTimeRange(args.time_phrase);
+
+            if (!timeRange) {
+                console.warn(`⚠️ Could not parse time phrase: "${args.time_phrase}"`);
                 return JSON.stringify({
-                    status: 'success',
-                    calculated_start_time: startTime,
-                    calculated_end_time: endTime,
-                    timespan_description: description
+                    status: 'error',
+                    message: `Could not parse time expression: "${args.time_phrase}"`
                 });
-            })
-            .function('delegate_to_summarizer', 'Delegate conversation analysis, summarization, or message retrieval tasks to the Summarizer Capability', {
-                type: 'object',
-                properties: {
-                    calculated_start_time: {
-                        type: 'string',
-                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
-                    },
-                    calculated_end_time: {
-                        type: 'string',
-                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
-                    },
-                    timespan_description: {
-                        type: 'string',
-                        description: 'Human-readable description of the calculated time range (optional)'
-                    }
-                },
-                required: []
-            }, async (args: any) => {
-                state.delegatedCapability = 'summarizer';
+            }
 
-                const summarizerCapability = new SummarizerCapability();
-                const result = await summarizerCapability.processRequest(context, {
-                    calculatedStartTime: args.calculated_start_time,
-                    calculatedEndTime: args.calculated_end_time,
-                    timespanDescription: args.timespan_description
-                });
+            const startTime = timeRange.from.toISOString();
+            const endTime = timeRange.to.toISOString();
+            const description = `${args.time_phrase} (${timeRange.from.toLocaleDateString()} to ${timeRange.to.toLocaleDateString()})`;
 
-                if (result.error) {
-                    console.error(`❌ Error in Summarizer Capability: ${result.error}`);
-                    return `Error in Summarizer Capability: ${result.error}`;
-                }
-                return result.response || 'No response from Summarizer Capability';
-            })
-            .function('delegate_to_action_items', 'Delegate task management, action item creation, or assignment tracking to the Action Items Capability', {
-                type: 'object',
-                properties: {
-                    calculated_start_time: {
-                        type: 'string',
-                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
-                    },
-                    calculated_end_time: {
-                        type: 'string',
-                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
-                    },
-                    timespan_description: {
-                        type: 'string',
-                        description: 'Human-readable description of the calculated time range (optional)'
-                    }
-                },
-                required: []
-            }, async (args: any) => {
-                state.delegatedCapability = 'action_items';
+            console.log(`📅 Parsed "${args.time_phrase}" to: ${startTime} → ${endTime}`);
 
-                const actionItemsCapability = new ActionItemsCapability();
-                const result = await actionItemsCapability.processRequest(context, {
-                    storage: this.storage,
-                    calculatedStartTime: args.calculated_start_time,
-                    calculatedEndTime: args.calculated_end_time,
-                    timespanDescription: args.timespan_description
-                });
-
-                return result.response || 'No response from Action Items Capability';
-            })
-            .function('delegate_to_search', 'Delegate conversation search, message finding, or historical conversation lookup to the Search Capability', {
-                type: 'object',
-                properties: {
-                    calculated_start_time: {
-                        type: 'string',
-                        description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
-                    },
-                    calculated_end_time: {
-                        type: 'string',
-                        description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
-                    },
-                    timespan_description: {
-                        type: 'string',
-                        description: 'Human-readable description of the calculated time range (optional)'
-                    }
-                },
-                required: []
-            }, async (args: any) => {
-                state.delegatedCapability = 'search';
-
-                const citationsArray: CitationAppearance[] = [];
-                const searchCapability = new SearchCapability();
-                const result = await searchCapability.processRequest(context, {
-                    citationsArray,
-                    calculatedStartTime: args.calculated_start_time,
-                    calculatedEndTime: args.calculated_end_time,
-                    timespanDescription: args.timespan_description
-                });
-
-                // Store citations in state
-                state.searchCitations = citationsArray;
-
-                return result.response || 'No response from Search Capability';
+            return JSON.stringify({
+                status: 'success',
+                calculated_start_time: startTime,
+                calculated_end_time: endTime,
+                timespan_description: description
             });
+        });
 
         return prompt;
+    }
+
+    private addCapabilities(prompt: ChatPrompt, context: MessageContext, state: ManagerState) {
+        for (const capability of CAPABILITY_DEFINITIONS) {
+            prompt = prompt.function(
+                capability.name,
+                capability.description,
+                capability.schema,
+                async (args: any) => {
+                    return capability.handler(args, context, state, this.storage);
+                }
+            );
+        }
     }
 
     async processRequest(context: MessageContext): Promise<ManagerResult> {
@@ -195,10 +100,11 @@ export class ManagerPrompt {
                 searchCitations: []
             };
 
-            // Create a prompt with context-specific handlers
-            const prompt = this.createPromptWithHandlers(context, state);
-            
-            const contextInfo = context.isPersonalChat 
+            const prompt = this.createManagerPrompt();
+
+            this.addCapabilities(prompt, context, state);
+
+            const contextInfo = context.isPersonalChat
                 ? `Context: This is a personal (1:1) chat with ${context.userName} (${context.userId}).`
                 : `Context: This is a group conversation.`;
 
@@ -227,10 +133,5 @@ For action item requests in personal chats, use the user's ID for personal actio
                 delegatedCapability: null
             };
         }
-    }
-
-    // Method to add new specialized capabilities in the future
-    addCapability(capabilityName: string, _description: string, _functionSchema: any, _handler: Function): void {
-        console.log(`🔧 Adding new capability: ${capabilityName}`);
     }
 }

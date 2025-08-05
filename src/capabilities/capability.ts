@@ -4,6 +4,16 @@ import { SqliteKVStore } from '../storage/storage';
 import { MessageContext } from '../utils/messageContext';
 
 /**
+ * Interface for capability definition used by the manager
+ */
+export interface CapabilityDefinition {
+  name: string;
+  description: string;
+  schema: any;
+  handler: (args: any, context: MessageContext, state: any, storage?: SqliteKVStore) => Promise<string>;
+}
+
+/**
  * Configuration interface for capability-specific options
  */
 export interface CapabilityOptions {

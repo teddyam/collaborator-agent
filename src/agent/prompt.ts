@@ -109,8 +109,3 @@ Examples:
 ❌ BAD: I can help you with conversation summaries, action item management, and message search. What would you like assistance with?
 ✅ GOOD: That's an interesting topic! While I focus on helping teams with conversation analysis and task management, I'm happy to chat. Is there something specific about your team's work I can help with?
 `;
-
-// Individual capability prompts are now located in their respective folders:
-// - summarizer/prompt.ts: SUMMARY_PROMPT
-// - actionItems/prompt.ts: ACTION_ITEMS_PROMPT  
-// - search/prompt.ts: SEARCH_PROMPT

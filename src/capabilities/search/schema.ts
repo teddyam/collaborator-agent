@@ -1,4 +1,25 @@
 // Function schemas for search operations
+
+// Schema for Search capability delegation function
+export const SEARCH_DELEGATION_SCHEMA = {
+    type: 'object' as const,
+    properties: {
+        calculated_start_time: {
+            type: 'string' as const,
+            description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
+        },
+        calculated_end_time: {
+            type: 'string' as const,
+            description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
+        },
+        timespan_description: {
+            type: 'string' as const,
+            description: 'Human-readable description of the calculated time range (optional)'
+        }
+    },
+    required: []
+};
+
 export const SEARCH_MESSAGES_SCHEMA = {
   type: 'object' as const,
   properties: {

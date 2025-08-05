@@ -77,10 +77,7 @@ app.on('message', async ({ send, activity, next }) => {
 
       addMessageToTracking(context.conversationKey, 'user', context.text, activity, context.userName);
 
-      // Get recent message history for context
-      const messageHistory = storage.getRecentMessages(context.conversationKey, 10);
-      
-      const result = await manager.processRequest(context, messageHistory);
+      const result = await manager.processRequest(context);
 
       if (result.response) {
         const sentMessageId = await finalizePromptResponse(send, result.response, result.citations);
@@ -124,7 +121,7 @@ app.on('mention', async ({ send, activity, api }) => {
         return;
       }
 
-      const result = await manager.processRequest(context, storage.getRecentMessages(context.conversationKey, 10));
+      const result = await manager.processRequest(context);
 
       if (result.response) {
         const sentMessageId = await finalizePromptResponse(send, result.response, result.citations);
