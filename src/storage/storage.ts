@@ -1,13 +1,15 @@
-import { UserMessage } from '@microsoft/teams.ai';
+import { Message } from '@microsoft/teams.ai';
 import Database from 'better-sqlite3';
 
-export interface MessageRecord extends UserMessage {
+interface MessageRecordExtension {
   id: number;
   conversation_id: string;
   name: string;
   timestamp: string;
   activity_id?: string; // used to create deeplink for Search Capability
 }
+
+export type MessageRecord = Message & MessageRecordExtension;
 
 // Interface for action items
 export interface ActionItem {
@@ -40,7 +42,7 @@ export interface FeedbackRecord {
 }
 
 // SQLite-based KV store implementation
-export class SqliteKVStore {
+export class SqliteKVStore { // make interface not concrete class
   private db: Database.Database;
 
   constructor(dbPath: string = './src/storage/conversations.db') {

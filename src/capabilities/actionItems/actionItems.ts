@@ -82,15 +82,15 @@ When analyzing messages for action items or performing any time-based queries, u
       }),
     })
     .function('analyze_for_action_items', 'Analyze conversation messages in a time range to identify potential action items', ANALYZE_FOR_ACTION_ITEMS_SCHEMA, async (args: any) => {
-      console.log(`🔍 FUNCTION CALL: analyze_for_action_items for conversation=${messageContext.conversationKey}`);
+      console.log(`🔍 FUNCTION CALL: analyze_for_action_items for conversation=${messageContext.conversationId}`);
       
       const { start_time, end_time } = args;
-      console.log(`🔍 FUNCTION CALL: get_messages_by_time_range with start=${start_time}, end=${end_time} for conversation=${messageContext.conversationKey}`);
-      const messages = getMessagesByTimeRange(messageContext.conversationKey, start_time, end_time);
+      console.log(`🔍 FUNCTION CALL: get_messages_by_time_range with start=${start_time}, end=${end_time} for conversation=${messageContext.conversationId}`);
+      const messages = getMessagesByTimeRange(messageContext.conversationId, start_time, end_time);
       console.log(`📅 Retrieved ${messages.length} messages from time range`);
       
       // Get existing action items to avoid duplicates
-      const existingActionItems = options.storage!.getActionItemsByConversation(messageContext.conversationKey);
+      const existingActionItems = options.storage!.getActionItemsByConversation(messageContext.conversationId);
       
       // Use members from context
       const availableMembers = messageContext.members;
@@ -144,7 +144,7 @@ When analyzing messages for action items or performing any time-based queries, u
         }
         
         const actionItem = options.storage!.createActionItem({
-          conversation_id: messageContext.conversationKey,
+          conversation_id: messageContext.conversationId,
           title: args.title,
           description: args.description,
           assigned_to: args.assigned_to,
@@ -193,7 +193,7 @@ When analyzing messages for action items or performing any time-based queries, u
           actionItems = options.storage!.getActionItemsForUser(args.assigned_to, args.status);
         } else {
           // Get all action items for this conversation
-          actionItems = options.storage!.getActionItemsByConversation(messageContext.conversationKey);
+          actionItems = options.storage!.getActionItemsByConversation(messageContext.conversationId);
           if (args.status) {
             actionItems = actionItems.filter(item => item.status === args.status);
           }
@@ -240,7 +240,7 @@ When analyzing messages for action items or performing any time-based queries, u
       }
     })
     .function('get_chat_members', 'Get the list of available members in this chat for action item assignment', GET_CHAT_MEMBERS_SCHEMA, async () => {
-      console.log(`👥 FUNCTION CALL: get_chat_members for conversation=${messageContext.conversationKey}`);
+      console.log(`👥 FUNCTION CALL: get_chat_members for conversation=${messageContext.conversationId}`);
       
       // Use members from context
       const availableMembers = messageContext.members;

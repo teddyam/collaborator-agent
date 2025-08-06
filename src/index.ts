@@ -1,12 +1,11 @@
 import { App } from '@microsoft/teams.apps';
 import { DevtoolsPlugin } from '@microsoft/teams.dev';
 import { ManagerPrompt } from './agent/manager';
-import { addMessageToTracking, saveMessagesDirectly, getMessageStorage } from './storage/message';
+import { getMessageStorage } from './storage/message';
 import { validateEnvironment, logModelConfigs } from './utils/config';
 import { handleDebugCommand } from './utils/debug';
-import { MockDataManager } from './utils/mockData';
-import { finalizePromptResponse } from './utils/utils';
-import { createMessageContext, getContextById, removeContextById } from './utils/messageContext';
+import { finalizePromptResponse, createMessageRecord } from './utils/utils';
+import { createMessageContext } from './utils/messageContext';
 
 const app = new App({
   plugins: [new DevtoolsPlugin()],
@@ -14,8 +13,6 @@ const app = new App({
 
 // Initialize storage and manager (reuse the singleton from message.ts)
 const storage = getMessageStorage();
-const manager = new ManagerPrompt(storage);
-const mockDataManager = new MockDataManager(storage);
 
 // Initialize feedback storage
 const feedbackStorage = storage;
@@ -47,96 +44,19 @@ app.on('message.submit.feedback', async ({ activity, log }) => {
   }
 });
 
-app.on('message', async ({ send, activity, next }) => {
-  const contextID = await createMessageContext(activity);
-  const context = getContextById(contextID);
-  
-  if (!context) {
-    console.error('❌ Failed to retrieve context for activity:', activity.id);
-    return;
-  }
+app.on('message', async ({ send, activity, api }) => {
+  const { context, conversationHistory } = await createMessageContext(storage, activity, api);
 
-  try {
-    const debugResult = await handleDebugCommand(context.text, context.conversationKey);
+  if (!activity.conversation.isGroup || activity.entities?.some((e) => e.type === 'mention')) { // process request if One-on-One chat or if @mentioned in Groupchat
+    await send({ type: 'typing' });
 
-    console.log(context.currentDateTime);
-    console.log(activity);
-    if (debugResult.isDebugCommand) {
-      if (debugResult.response) {
-        await send({
-          type: 'message',
-          text: debugResult.response
-        });
-      }
-      return;
-    }
+    const manager = new ManagerPrompt(storage, conversationHistory);
+    const result = await manager.processRequest(context); // make common function
 
-    // If this is a personal chat, always route to the manager for full conversational experience
-    if (context.isPersonalChat) {
-      await send({ type: 'typing' });
-
-      addMessageToTracking(context.conversationKey, 'user', context.text, activity, context.userName);
-
-      const result = await manager.processRequest(context);
-
-      if (result.response) {
-        const sentMessageId = await finalizePromptResponse(send, result.response, result.citations);
-        feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
-        addMessageToTracking(context.conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
-      } else {
-        await send({ type: 'message', text: 'Hello! I can help you with conversation summaries, action item management, and general assistance. What would you like help with?' });
-      }
-      await saveMessagesDirectly(context.conversationKey);
-      return;
-    }
-
-    addMessageToTracking(context.conversationKey, 'user', context.text, activity, context.userName);
-
-    await saveMessagesDirectly(context.conversationKey);
-
-    await next();
-  } finally {
-    // Clean up context after processing
-    removeContextById(contextID);
-  }
-});
-
-app.on('mention', async ({ send, activity, api }) => {
-  await send({ type: 'typing' });
-  const contextID = await createMessageContext(activity, api);
-  const context = getContextById(contextID);
-  
-  if (!context) {
-    console.error('❌ Failed to retrieve context for activity:', activity.id);
-    return;
-  }
-
-  try {
-    if (activity.type === 'message' && context.text.trim() !== '') {
-      const debugResult = await handleDebugCommand(context.text, context.conversationKey);
-      if (debugResult.isDebugCommand) {
-        if (debugResult.response) {
-          await send({ type: 'message', text: debugResult.response });
-        }
-        return;
-      }
-
-      const result = await manager.processRequest(context);
-
-      if (result.response) {
-        const sentMessageId = await finalizePromptResponse(send, result.response, result.citations);
-
-        feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
-
-        addMessageToTracking(context.conversationKey, 'assistant', result.response, { id: sentMessageId }, 'AI Assistant');
-      } else {
-        await send({ type: 'message', text: 'I received your message but I\'m not sure how to help with that. I can help with conversation summaries and message analysis.' });
-      }
-      await saveMessagesDirectly(context.conversationKey);
-    }
-  } finally {
-    // Clean up context after processing
-    removeContextById(contextID);
+    await send(finalizePromptResponse(result.response, result.citations));
+    // feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
+  } else {
+    conversationHistory.push(createMessageRecord(activity));
   }
 });
 
@@ -145,9 +65,6 @@ app.on('mention', async ({ send, activity, api }) => {
   try {
     validateEnvironment();
     logModelConfigs();
-
-    // Initialize mock data if needed
-    mockDataManager.initializeMockDataIfNeeded();
   } catch (error) {
     console.error('❌ Configuration error:', error);
     process.exit(1);

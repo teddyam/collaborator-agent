@@ -7,6 +7,7 @@ import { getModelConfig } from '../utils/config';
 import { MessageContext } from '../utils/messageContext';
 import { extractTimeRange } from '../utils/utils';
 import { CAPABILITY_DEFINITIONS } from '../capabilities/registry';
+import { ConversationMemory } from '../storage/conversationMemory';
 
 // Result interface for manager responses
 export interface ManagerResult {
@@ -23,10 +24,10 @@ interface ManagerState {
 
 // Manager prompt that coordinates all sub-tasks
 export class ManagerPrompt {
-    private storage: SqliteKVStore;
+    private prompt: ChatPrompt;
 
-    constructor(storage: SqliteKVStore) {
-        this.storage = storage;
+    constructor(private storage: SqliteKVStore, private conversationHistory: ConversationMemory) {
+        this.prompt = this.createManagerPrompt();
     }
 
     // Create a prompt with context-specific handlers
@@ -40,6 +41,7 @@ export class ManagerPrompt {
                 endpoint: managerModelConfig.endpoint,
                 apiVersion: managerModelConfig.apiVersion,
             }),
+            messages: this.conversationHistory,
         }).function('calculate_time_range', 'Parse natural language time expressions and calculate exact start/end times for time-based queries', {
             type: 'object' as const,
             properties: {
@@ -79,9 +81,9 @@ export class ManagerPrompt {
         return prompt;
     }
 
-    private addCapabilities(prompt: ChatPrompt, context: MessageContext, state: ManagerState) {
+    private addCapabilities(context: MessageContext, state: ManagerState) {
         for (const capability of CAPABILITY_DEFINITIONS) {
-            prompt = prompt.function(
+            this.prompt.function(
                 capability.name,
                 capability.description,
                 capability.schema,
@@ -94,32 +96,17 @@ export class ManagerPrompt {
 
     async processRequest(context: MessageContext): Promise<ManagerResult> {
         try {
-            // Create state for this request
             const state: ManagerState = {
                 delegatedCapability: null,
                 searchCitations: []
             };
 
-            const prompt = this.createManagerPrompt();
+            this.addCapabilities(context, state);
 
-            this.addCapabilities(prompt, context, state);
+            const response = await this.prompt.send(context.text);
 
-            const contextInfo = context.isPersonalChat
-                ? `Context: This is a personal (1:1) chat with ${context.userName} (${context.userId}).`
-                : `Context: This is a group conversation.`;
-
-            const response = await prompt.send(`
-User Request: "${context.text}"
-Conversation ID: ${context.conversationKey}
-Current Date/Time: ${context.currentDateTime}
-${contextInfo}
-
-IMPORTANT: If the user's request mentions any time periods, extract the time-related phrase and use the calculate_time_range function FIRST to convert it to exact timestamps, then pass those calculated times to the delegation functions.
-
-Please analyze this request and delegate it to the appropriate specialized capability. Return ONLY the response from the delegated capability without any additional commentary.
-For action item requests in personal chats, use the user's ID for personal action item management.
-`);
-
+            console.log(this.prompt.messages.values());
+            
             return {
                 response: response.content || 'No response generated',
                 delegatedCapability: state.delegatedCapability,

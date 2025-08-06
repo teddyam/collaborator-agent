@@ -126,8 +126,7 @@ IMPORTANT: Pre-calculated time range available:
 When searching messages, use these exact timestamps instead of calculating your own. This ensures consistency with the Manager's time calculations and reduces token usage.`;
     }
     
-    // Get current date and timezone info for the LLM
-    const currentDate = messageContext.currentDateTime;
+    const currentDate = messageContext.timestamp;
     
     const instructions = `${SEARCH_PROMPT}
 
@@ -150,7 +149,7 @@ CURRENT CONTEXT:
       
       // Search for matching messages
       const matchingMessages = searchMessages(
-        messageContext.conversationKey,
+        messageContext.conversationId,
         keywords,
         participants,
         start_time,
@@ -182,7 +181,7 @@ CURRENT CONTEXT:
 
       // Create citations for the first few results (limit to 5 to avoid overwhelming the user)
       const messagesToCite = matchingMessages.slice(0, 5);
-      const citations = messagesToCite.map(msg => createCitationFromRecord(msg, messageContext.conversationKey));
+      const citations = messagesToCite.map(msg => createCitationFromRecord(msg, messageContext.conversationId));
       
       // If we have an array to store citations, add them there for the manager to access
       if (options.citationsArray) {

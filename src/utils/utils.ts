@@ -1,38 +1,30 @@
-import { MessageActivity, CitationAppearance } from '@microsoft/teams.api';
+import { IMessageActivity, MessageActivity, CitationAppearance } from '@microsoft/teams.api';
 import * as chrono from 'chrono-node';
-
-/**
- * Helper function to get formatted current date and time
- */
-export function getCurrentDateTime(): string {
-    const currentDate = new Date();
-    const currentDayOfWeek = currentDate.toLocaleDateString('en-US', { weekday: 'long' }); // e.g., "Monday"
-    return `${currentDate} (${currentDayOfWeek})`;
-}
+import { MessageRecord } from '../storage/storage';
 
 /**
  * Helper function to finalize and send a prompt response with citations
  */
-export async function finalizePromptResponse(send: any, text: string, citations?: CitationAppearance[]): Promise<string> {
-    const messageActivity = new MessageActivity(text)
-        .addAiGenerated()
-        .addFeedback();
+export function finalizePromptResponse(text: string, citations?: CitationAppearance[]): MessageActivity {
+  const messageActivity = new MessageActivity(text)
+    .addAiGenerated()
+    .addFeedback();
 
-    // Add citations if provided
-    if (citations && citations.length > 0) {
-        console.log(`Adding ${citations.length} citations to message activity`);
-        citations.forEach((citation, index) => {
-            const citationNumber = index + 1;
-            messageActivity.addCitation(citationNumber, citation);
-            // The corresponding citation needs to be added in the message content
-            messageActivity.text += ` [${citationNumber}]`;
-        });
-    }
+  // Add citations if provided
+  if (citations && citations.length > 0) {
+    console.log(`Adding ${citations.length} citations to message activity`);
+    citations.forEach((citation, index) => {
+      const citationNumber = index + 1;
+      messageActivity.addCitation(citationNumber, citation);
+      // The corresponding citation needs to be added in the message content
+      messageActivity.text += ` [${citationNumber}]`;
+    });
+  }
 
-    console.log('Citations in message activity:');
-    console.log(JSON.stringify(messageActivity.entities?.find(e => e.citation)?.citation, null, 2));
-    const { id: sentMessageId } = await send(messageActivity);
-    return sentMessageId;
+  console.log('Citations in message activity:');
+  console.log(JSON.stringify(messageActivity.entities?.find(e => e.citation)?.citation, null, 2));
+
+  return messageActivity;
 }
 
 /**
@@ -52,5 +44,17 @@ export function extractTimeRange(
   const to = end?.date() ?? new Date(from.getTime() + 24 * 60 * 60 * 1000); // +1 day
 
   return { from, to };
+}
+
+export function createMessageRecord(activity: IMessageActivity): MessageRecord {
+  return {
+    id: 100, // FIX TMR
+    conversation_id: activity.conversation.id,
+    name: activity.from.name,
+    role: 'user',
+    content: activity.text || '',
+    timestamp: activity.timestamp?.toString() || new Date().toISOString(),
+    activity_id: activity.id
+  };
 }
 

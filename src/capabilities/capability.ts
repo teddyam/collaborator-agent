@@ -120,7 +120,7 @@ Use these exact timestamps for any time-based queries if needed.`;
    * Helper method to log capability initialization
    */
   protected logInit(messageContext: MessageContext) {
-    console.log(`📋 Creating ${this.name} Capability for conversation: ${messageContext.conversationKey}`);
-    console.log(`🕒 Current date/time: ${messageContext.currentDateTime}`);
+    console.log(`📋 Creating ${this.name} Capability for conversation: ${messageContext.conversationId}`);
+    console.log(`🕒 Current date/time: ${messageContext.timestamp}`);
   }
 }

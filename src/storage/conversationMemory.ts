@@ -1,9 +1,16 @@
 import { IMemory } from '@microsoft/teams.ai';
 import { SqliteKVStore } from './storage';
 import { MessageRecord } from './storage';
+import { MessageContext } from '../utils/messageContext';
 
 export class ConversationMemory implements IMemory {
-    constructor(private store: SqliteKVStore, private conversationId: string) { }
+    private conversationId: string;
+
+    constructor(private store: SqliteKVStore, private context: MessageContext 
+        // add conversationid as param to clarify
+    ) {
+        this.conversationId = context.conversationId;
+    }
 
     async get(index: number): Promise<MessageRecord | undefined> {
         return this.store.getMessageAtIndex(this.conversationId, index);
@@ -18,6 +25,18 @@ export class ConversationMemory implements IMemory {
     }
 
     async push(message: MessageRecord): Promise<void> {
+        // decorate message with context if user message
+
+        message.timestamp = this.context.timestamp;
+        message.activity_id = this.context.activityId;
+
+        if (message.role == 'user') {
+            message.name = this.context.userName; // will be 'User' if userName isn't detected
+        }
+        else {
+            message.name = 'model';
+        }
+
         await this.store.addMessages(this.conversationId, [message]);
     }
 

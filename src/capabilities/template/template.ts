@@ -61,7 +61,7 @@ export class TemplateCapability {
             
             // Example: Basic request processing
             const userRequest = context.text;
-            // const conversationId = context.conversationKey;
+            // const conversationId = context.conversationId;
             // const userId = context.userId;
             const userName = context.userName;
             const isPersonalChat = context.isPersonalChat;
