@@ -15,46 +15,46 @@ export interface MessageContext {
   isPersonalChat: boolean;
   activityId: string;
   members: Array<{ name: string, id: string }>; // Available conversation members
+  memory: ConversationMemory; // get convo memory by agent type
+  startTime?: string;
+  endTime?: string;
 }
 
-// // Import member fetching function from actionItems
-// async function getConversationParticipantsFromAPI(api: Client, conversationId: string): Promise<Array<{ name: string, id: string }>> {
-//   if (!api || !conversationId) {
-//     return [];
-//   }
+async function getConversationParticipantsFromAPI(
+  api: Client,
+  conversationId: string
+): Promise<Array<{ name: string; id: string }>> {
+  try {
+    console.log(`🔍 Fetching conversation members for: ${conversationId}`);
 
-//   try {
-//     console.log(`🔍 Fetching conversation members for: ${conversationId}`);
+    const members = await api.conversations.members(conversationId).get();
 
-//     const response = await api.conversations.members(conversationId).get();
+    if (Array.isArray(members)) {
+      const participants = members.map((member) => ({
+        name: member.name || 'Unknown',
+        id: member.aadObjectId || member.id
+      }));
 
-//     if (response && response.value && Array.isArray(response.value)) {
-//       const members = response.value.map((member: any) => ({
-//         name: member.name || member.givenName || 'Unknown',
-//         id: member.id || member.objectId
-//       }));
-
-//       console.log(`👥 Found ${members.length} conversation members`);
-//       return members;
-//     } else {
-//       console.warn('⚠️ Unexpected response format when fetching members:', response);
-//       return [];
-//     }
-//   } catch (error) {
-//     console.error('❌ Error fetching conversation members:', error);
-//     return [];
-//   }
-// }
+      console.log(`👥 Found ${participants.length} conversation members`);
+      return participants;
+    } else {
+      console.warn('⚠️ Expected an array from conversations.members but got:', members);
+      return [];
+    }
+  } catch (error) {
+    console.error('❌ Error fetching conversation members:', error);
+    return [];
+  }
+}
 
 /**
  * Factory function to create a MessageContext from a Teams activity
- * Now also stores the context in the global map using the activity ID
  */
 export async function createMessageContext(
   storage: SqliteKVStore,
-  activity: IMessageActivity, // import
+  activity: IMessageActivity,
   api?: Client
-): Promise<{ context: MessageContext; conversationHistory: ConversationMemory }> {
+): Promise<MessageContext> {
 
   const text = activity.text || '';
   const conversationId = `${activity.conversation.id}`;
@@ -66,9 +66,12 @@ export async function createMessageContext(
 
   // Fetch members for group conversations
   let members: Array<{ name: string, id: string }> = [];
-  // if (api && !isPersonalChat) {
-  //   members = await getConversationParticipantsFromAPI(api, conversationId);
-  // }
+  if (api) {
+    members = await getConversationParticipantsFromAPI(api, conversationId);
+    console.log(members);
+  }
+
+  const memory = new ConversationMemory(storage, conversationId);
 
   const context: MessageContext = {
     text,
@@ -78,11 +81,10 @@ export async function createMessageContext(
     timestamp,
     isPersonalChat,
     activityId,
-    members
+    members,
+    memory,
   };
 
-  const conversationHistory = new ConversationMemory(storage, context);
-
-  return { context, conversationHistory };
+  return context;
 }
 

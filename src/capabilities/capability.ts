@@ -50,12 +50,12 @@ export interface Capability {
   /**
    * Create a ChatPrompt instance for this capability
    */
-  createPrompt(messageContext: MessageContext, options?: CapabilityOptions): ChatPrompt;
+  createPrompt(context: MessageContext, options?: CapabilityOptions): ChatPrompt;
   
   /**
    * Process a user request using this capability
    */
-  processRequest(messageContext: MessageContext, options?: CapabilityOptions): Promise<CapabilityResult>;
+  processRequest(context: MessageContext, options?: CapabilityOptions): Promise<CapabilityResult>;
   
   /**
    * Get the function schemas that this capability provides
@@ -69,21 +69,21 @@ export interface Capability {
 export abstract class BaseCapability implements Capability {
   abstract readonly name: string;
   
-  abstract createPrompt(messageContext: MessageContext, options?: CapabilityOptions): ChatPrompt;
+  abstract createPrompt(context: MessageContext, options?: CapabilityOptions): ChatPrompt;
   
   abstract getFunctionSchemas(): Array<{name: string, schema: any}>;
   
   /**
    * Default implementation of processRequest that creates a prompt and sends the request
    */
-  async processRequest(messageContext: MessageContext, options: CapabilityOptions = {}): Promise<CapabilityResult> {
+  async processRequest(context: MessageContext, options: CapabilityOptions = {}): Promise<CapabilityResult> {
     try {
-      const prompt = this.createPrompt(messageContext, options);
+      const prompt = this.createPrompt(context, options);
       
       // Build enhanced request with time parameters if provided
-      let enhancedRequest = messageContext.text;
+      let enhancedRequest = context.text;
       if (options.calculatedStartTime && options.calculatedEndTime) {
-        enhancedRequest = `${messageContext.text}
+        enhancedRequest = `${context.text}
 
 Pre-calculated time range:
 - Start: ${options.calculatedStartTime}
@@ -119,8 +119,8 @@ Use these exact timestamps for any time-based queries if needed.`;
   /**
    * Helper method to log capability initialization
    */
-  protected logInit(messageContext: MessageContext) {
-    console.log(`📋 Creating ${this.name} Capability for conversation: ${messageContext.conversationId}`);
-    console.log(`🕒 Current date/time: ${messageContext.timestamp}`);
+  protected logInit(context: MessageContext) {
+    console.log(`📋 Creating ${this.name} Capability for conversation: ${context.conversationId}`);
+    console.log(`🕒 Current date/time: ${context.timestamp}`);
   }
 }

@@ -2,7 +2,6 @@ import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { CitationAppearance } from '@microsoft/teams.api';
 import { MessageRecord } from '../../storage/storage';
-import { getMessagesByTimeRange } from '../../storage/message';
 import { SEARCH_PROMPT } from './prompt';
 import { SEARCH_MESSAGES_SCHEMA, SEARCH_DELEGATION_SCHEMA } from './schema';
 import { BaseCapability, CapabilityOptions, CapabilityDefinition } from '../capability';
@@ -56,7 +55,7 @@ export function createCitationFromRecord(message: MessageRecord, conversationId:
  * Search for messages based on keywords and participants
  */
 function searchMessages(
-  conversationId: string,
+  context: MessageContext,
   keywords: string[],
   participants: string[] = [],
   startTime?: string,
@@ -65,7 +64,7 @@ function searchMessages(
 ): MessageRecord[] {
   try {
     // Get messages in the time range using centralized function
-    const messages = getMessagesByTimeRange(conversationId, startTime, endTime);
+    const messages = context.memory.getMessagesByTimeRange(startTime, endTime);
     
     // Filter by keywords (case-insensitive)
     let filteredMessages = messages.filter((msg: MessageRecord) => {
@@ -103,12 +102,12 @@ function searchMessages(
 export class SearchCapability extends BaseCapability {
   readonly name = 'search';
   
-  createPrompt(messageContext: MessageContext, options: CapabilityOptions = {}): ChatPrompt {
-    if (!messageContext) {
+  createPrompt(context: MessageContext, options: CapabilityOptions = {}): ChatPrompt {
+    if (!context) {
       throw new Error(`Message context is required for search capability`);
     }
     
-    this.logInit(messageContext);
+    this.logInit(context);
     
     const searchModelConfig = this.getModelConfig('search');
     
@@ -126,7 +125,7 @@ IMPORTANT: Pre-calculated time range available:
 When searching messages, use these exact timestamps instead of calculating your own. This ensures consistency with the Manager's time calculations and reduces token usage.`;
     }
     
-    const currentDate = messageContext.timestamp;
+    const currentDate = context.timestamp;
     
     const instructions = `${SEARCH_PROMPT}
 
@@ -149,7 +148,7 @@ CURRENT CONTEXT:
       
       // Search for matching messages
       const matchingMessages = searchMessages(
-        messageContext.conversationId,
+        context,
         keywords,
         participants,
         start_time,
@@ -181,7 +180,7 @@ CURRENT CONTEXT:
 
       // Create citations for the first few results (limit to 5 to avoid overwhelming the user)
       const messagesToCite = matchingMessages.slice(0, 5);
-      const citations = messagesToCite.map(msg => createCitationFromRecord(msg, messageContext.conversationId));
+      const citations = messagesToCite.map(msg => createCitationFromRecord(msg, context.conversationId));
       
       // If we have an array to store citations, add them there for the manager to access
       if (options.citationsArray) {

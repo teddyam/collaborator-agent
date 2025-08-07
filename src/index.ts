@@ -1,18 +1,17 @@
 import { App } from '@microsoft/teams.apps';
 import { DevtoolsPlugin } from '@microsoft/teams.dev';
 import { ManagerPrompt } from './agent/manager';
-import { getMessageStorage } from './storage/message';
 import { validateEnvironment, logModelConfigs } from './utils/config';
-import { handleDebugCommand } from './utils/debug';
-import { finalizePromptResponse, createMessageRecord } from './utils/utils';
+import { finalizePromptResponse, createMessageRecords } from './utils/utils';
 import { createMessageContext } from './utils/messageContext';
+import { SqliteKVStore } from './storage/storage';
 
 const app = new App({
   plugins: [new DevtoolsPlugin()],
 });
 
-// Initialize storage and manager (reuse the singleton from message.ts)
-const storage = getMessageStorage();
+// Initialize storage
+const storage = new SqliteKVStore();
 
 // Initialize feedback storage
 const feedbackStorage = storage;
@@ -45,19 +44,32 @@ app.on('message.submit.feedback', async ({ activity, log }) => {
 });
 
 app.on('message', async ({ send, activity, api }) => {
-  const { context, conversationHistory } = await createMessageContext(storage, activity, api);
+  
+  const botMentioned = activity.entities?.some((e) => e.type === 'mention');
+  const context = botMentioned ? await createMessageContext(storage, activity, api) : await createMessageContext(storage, activity);
 
-  if (!activity.conversation.isGroup || activity.entities?.some((e) => e.type === 'mention')) { // process request if One-on-One chat or if @mentioned in Groupchat
+  if (activity.text == 'clear da messages') {
+    storage.clearAll();
+  }
+
+  let trackedMessages;
+
+  if (!activity.conversation.isGroup || botMentioned) { // process request if One-on-One chat or if @mentioned in Groupchat
     await send({ type: 'typing' });
 
-    const manager = new ManagerPrompt(storage, conversationHistory);
-    const result = await manager.processRequest(context); // make common function
+    const manager = new ManagerPrompt(storage, context);
+    const result = await manager.processRequest();
+    const formattedResult = finalizePromptResponse(result.response, result.citations);
 
-    await send(finalizePromptResponse(result.response, result.citations));
-    // feedbackStorage.storeDelegatedCapability(sentMessageId, result.delegatedCapability);
+    const sent = await send(formattedResult);
+    formattedResult.id = sent.id;
+
+    trackedMessages = createMessageRecords([activity, formattedResult]);
   } else {
-    conversationHistory.push(createMessageRecord(activity));
+    trackedMessages = createMessageRecords([activity]);
   }
+
+  context.memory.addMessages(trackedMessages)
 });
 
 (async () => {

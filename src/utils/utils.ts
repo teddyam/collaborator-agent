@@ -46,15 +46,17 @@ export function extractTimeRange(
   return { from, to };
 }
 
-export function createMessageRecord(activity: IMessageActivity): MessageRecord {
-  return {
-    id: 100, // FIX TMR
-    conversation_id: activity.conversation.id,
-    name: activity.from.name,
-    role: 'user',
-    content: activity.text || '',
+export function createMessageRecords(activities: IMessageActivity[]): MessageRecord[] {
+  const conversation_id = activities[0].conversation.id; // get conversation ID from user message no matter what
+  return activities.map(activity => ({
+    conversation_id: conversation_id,
+    role: activity.entities?.some(
+    (e: any) => e.additionalType?.includes('AIGeneratedContent')
+  ) ? 'model' : 'user',
+    content: activity.text?.replace(/<\/?at>/g, '') || '',
     timestamp: activity.timestamp?.toString() || new Date().toISOString(),
-    activity_id: activity.id
-  };
+    activity_id: activity.id,
+    name: activity.from?.name || 'Collaborator'
+  }));
 }
 

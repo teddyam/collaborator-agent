@@ -1,7 +1,6 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
 import { OpenAIChatModel } from '@microsoft/teams.openai';
 import { ActionItem } from '../../storage/storage';
-import { getMessagesByTimeRange } from '../../storage/message';
 import { ACTION_ITEMS_PROMPT } from './prompt';
 import { 
   ANALYZE_FOR_ACTION_ITEMS_SCHEMA, 
@@ -86,7 +85,7 @@ When analyzing messages for action items or performing any time-based queries, u
       
       const { start_time, end_time } = args;
       console.log(`🔍 FUNCTION CALL: get_messages_by_time_range with start=${start_time}, end=${end_time} for conversation=${messageContext.conversationId}`);
-      const messages = getMessagesByTimeRange(messageContext.conversationId, start_time, end_time);
+      const messages = messageContext.memory.getMessagesByTimeRange(start_time, end_time);
       console.log(`📅 Retrieved ${messages.length} messages from time range`);
       
       // Get existing action items to avoid duplicates
@@ -96,7 +95,7 @@ When analyzing messages for action items or performing any time-based queries, u
       const availableMembers = messageContext.members;
       
       return JSON.stringify({
-        status: 'success',
+        status: 'success', 
         time_range: { start_time: start_time, end_time: end_time },
         messages: messages.map(msg => ({
           timestamp: msg.timestamp,

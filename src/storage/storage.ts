@@ -2,8 +2,8 @@ import { Message } from '@microsoft/teams.ai';
 import Database from 'better-sqlite3';
 
 interface MessageRecordExtension {
-  id: number;
-  conversation_id: string;
+  id?: number;
+  conversation_id?: string;
   name: string;
   timestamp: string;
   activity_id?: string; // used to create deeplink for Search Capability
@@ -41,140 +41,68 @@ export interface FeedbackRecord {
   updated_at: string;
 }
 
-// SQLite-based KV store implementation
-export class SqliteKVStore { // make interface not concrete class
+export class SqliteKVStore {
   private db: Database.Database;
 
   constructor(dbPath: string = './src/storage/conversations.db') {
     this.db = new Database(dbPath);
     this.initializeDatabase();
-    console.log(`🗄️ SQLite KV store initialized at: ${dbPath}`);
   }
 
   private initializeDatabase(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
         conversation_id TEXT NOT NULL,
         role TEXT NOT NULL,
+        name TEXT NOT NULL,
         content TEXT NOT NULL,
-        name TEXT NOT NULL DEFAULT 'Unknown',
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        activity_id TEXT NULL
+        activity_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        blob TEXT NOT NULL
       )
     `);
     this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
-    `);
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_conversation_id ON messages(conversation_id);
     `);
   }
 
-  get(conversationId: string): MessageRecord[] | undefined {
-    try {
-      const stmt = this.db.prepare(
-        'SELECT id, conversation_id, role, content, name, timestamp, activity_id FROM messages WHERE conversation_id = ? ORDER BY id ASC'
-      );
-      return stmt.all(conversationId) as MessageRecord[];
-    } catch (error) {
-      console.error(`❌ Error retrieving messages for ${conversationId}:`, error);
-      return undefined;
-    }
+  clearAll(): void {
+    this.db.exec('DELETE FROM messages; VACUUM;');
+    console.log('🧹 Cleared all messages from SQLite store.');
   }
 
-  set(conversationId: string, messages: MessageRecord[]): void {
-    this.clearConversation(conversationId);
-    const stmt = this.db.prepare(
-      'INSERT INTO messages (conversation_id, role, content, name, timestamp, activity_id) VALUES (?, ?, ?, ?, ?, ?)'
+  get(conversationId: string): MessageRecord[] {
+    const stmt = this.db.prepare<{}, { blob: string }>(
+      'SELECT blob FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC'
     );
-    for (const message of messages) {
-      stmt.run(
-        conversationId,
-        message.role,
-        message.content,
-        message.name,
-        message.timestamp,
-        message.activity_id || null
-      );
-    }
+    return stmt.all(conversationId).map((row) => JSON.parse(row.blob) as MessageRecord);
   }
 
-  delete(conversationId: string): void {
+  getMessagesByTimeRange(conversationId: string, startTime?: string, endTime?: string): MessageRecord[] {
+    const messages = this.get(conversationId);
+    return messages.filter(m => {
+      const ts = m.timestamp;
+      return (!startTime || ts >= startTime) && (!endTime || ts <= endTime);
+    });
+  }
+
+  getRecentMessages(conversationId: string, limit: number = 10): MessageRecord[] {
+    const messages = this.get(conversationId);
+    return messages.slice(-limit);
+  }
+
+  clearConversation(conversationId: string): void {
     const stmt = this.db.prepare('DELETE FROM messages WHERE conversation_id = ?');
     stmt.run(conversationId);
   }
 
-  clearConversation(conversationId: string): void {
-    this.delete(conversationId);
-  }
-
-  addMessages(conversationId: string, messages: MessageRecord[]): void {
+  addMessages(messages: MessageRecord[]): void {
     const stmt = this.db.prepare(
-      'INSERT INTO messages (conversation_id, role, content, name, timestamp, activity_id) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO messages (conversation_id, role, name, content, activity_id, timestamp, blob) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     for (const message of messages) {
-      stmt.run(
-        conversationId,
-        message.role,
-        message.content,
-        message.name,
-        message.timestamp,
-        message.activity_id || null
-      );
+      stmt.run(message.conversation_id, message.role, message.name, message.content, message.activity_id, message.timestamp, JSON.stringify(message));
     }
-  }
-
-  getMessageAtIndex(conversationId: string, index: number): MessageRecord | undefined {
-    const stmt = this.db.prepare(
-      'SELECT id, conversation_id, role, content, name, timestamp, activity_id FROM messages WHERE conversation_id = ? ORDER BY id ASC LIMIT 1 OFFSET ?'
-    );
-    return stmt.get(conversationId, index) as MessageRecord | undefined;
-  }
-
-  // Update a specific message
-  updateMessageAtIndex(conversationId: string, index: number, message: MessageRecord): void {
-    const selectStmt = this.db.prepare(
-      'SELECT id FROM messages WHERE conversation_id = ? ORDER BY id ASC LIMIT 1 OFFSET ?'
-    );
-    const row = selectStmt.get(conversationId, index) as { id: number } | undefined;
-    if (!row) return;
-
-    const updateStmt = this.db.prepare(
-      'UPDATE messages SET role = ?, content = ?, name = ?, activity_id = ?, timestamp = ? WHERE id = ?'
-    );
-    updateStmt.run(
-      message.role,
-      message.content,
-      message.name,
-      message.activity_id || null,
-      message.timestamp,
-      row.id
-    );
-  }
-
-  // Delete a specific message
-  deleteMessageAtIndex(conversationId: string, index: number): void {
-    const selectStmt = this.db.prepare(
-      'SELECT id FROM messages WHERE conversation_id = ? ORDER BY id ASC LIMIT 1 OFFSET ?'
-    );
-    const row = selectStmt.get(conversationId, index) as { id: number } | undefined;
-    if (!row) return;
-    const deleteStmt = this.db.prepare('DELETE FROM messages WHERE id = ?');
-    deleteStmt.run(row.id);
-  }
-
-  // Pop the last message
-  popLastMessage(conversationId: string): MessageRecord | undefined {
-    const selectStmt = this.db.prepare(
-      'SELECT id, conversation_id, role, content, name, timestamp, activity_id FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 1'
-    );
-    const row = selectStmt.get(conversationId) as MessageRecord | undefined;
-    if (!row) return undefined;
-
-    const deleteStmt = this.db.prepare('DELETE FROM messages WHERE id = ?');
-    deleteStmt.run(row.id);
-    return row;
   }
 
   countMessages(conversationId: string): number {
@@ -191,277 +119,6 @@ export class SqliteKVStore { // make interface not concrete class
       console.log(`🧹 Cleared all messages from database. Deleted ${result.changes} records.`);
     } catch (error) {
       console.error('❌ Error clearing all messages:', error);
-    }
-  }
-
-  // Debug function to print all database contents for a conversation
-  debugPrintDatabase(conversationId: string): string {
-    try {
-      console.log(`🔍 DEBUG: Printing database contents for conversation: ${conversationId}`);
-
-      // Get conversation data from conversations table
-      const conversationStmt = this.db.prepare('SELECT * FROM conversations WHERE key = ?');
-      const conversationData = conversationStmt.get(conversationId) as any;
-
-      // Get individual messages from messages table
-      const messagesStmt = this.db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY id ASC');
-      const messageData = messagesStmt.all(conversationId) as MessageRecord[];
-
-      // Get total counts
-      const totalConversations = this.db.prepare('SELECT COUNT(*) as count FROM conversations').get() as { count: number };
-      const totalMessages = this.db.prepare('SELECT COUNT(*) as count FROM messages').get() as { count: number };
-
-      const debugInfo = {
-        conversationId,
-        timestamp: new Date().toISOString(),
-        database_stats: {
-          total_conversations: totalConversations.count,
-          total_messages: totalMessages.count
-        },
-        conversation_table: {
-          exists: !!conversationData,
-          data: conversationData ? {
-            key: conversationData.key,
-            created_at: conversationData.created_at,
-            updated_at: conversationData.updated_at,
-            message_count: conversationData.value ? JSON.parse(conversationData.value).length : 0
-          } : null
-        },
-        messages_table: {
-          count: messageData.length,
-          messages: messageData.map(msg => ({
-            id: msg.id,
-            role: msg.role,
-            name: msg.name,
-            timestamp: msg.timestamp,
-            activity_id: msg.activity_id || null, // Include Teams activity ID for deep linking
-            content_preview: msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : ''),
-            content_length: msg.content.length
-          }))
-        }
-      };
-
-      console.log(`🔍 DEBUG INFO:`, JSON.stringify(debugInfo, null, 2));
-      return JSON.stringify(debugInfo, null, 2);
-
-    } catch (error) {
-      console.error(`❌ Error debugging database for conversation ${conversationId}:`, error);
-      return JSON.stringify({
-        error: `Database debug failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        conversationId,
-        timestamp: new Date().toISOString()
-      });
-    }
-  }
-
-  // Method to insert a message with custom timestamp (for mock data)
-  insertMessageWithTimestamp(conversationId: string, role: string, content: string, timestamp: string, name?: string, activityId?: string): void {
-    try {
-      const stmt = this.db.prepare(`
-        INSERT INTO messages (conversation_id, role, content, name, timestamp, activity_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(conversationId, role, content, name || 'Unknown', timestamp, activityId || null);
-    } catch (error) {
-      console.error(`❌ Error inserting message with custom timestamp:`, error);
-    }
-  }
-
-  // ===== ACTION ITEMS MANAGEMENT =====
-
-  // Create a new action item
-  createActionItem(actionItem: Omit<ActionItem, 'id' | 'created_at' | 'updated_at'>): ActionItem {
-    try {
-      const stmt = this.db.prepare(`
-        INSERT INTO action_items (
-          conversation_id, title, description, assigned_to, assigned_to_id, assigned_by, assigned_by_id,
-          status, priority, due_date, source_message_ids
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      const result = stmt.run(
-        actionItem.conversation_id,
-        actionItem.title,
-        actionItem.description,
-        actionItem.assigned_to,
-        actionItem.assigned_to_id || null,
-        actionItem.assigned_by,
-        actionItem.assigned_by_id || null,
-        actionItem.status,
-        actionItem.priority,
-        actionItem.due_date || null,
-        actionItem.source_message_ids || null
-      );
-
-      const newActionItem = this.getActionItemById(result.lastInsertRowid as number);
-      console.log(`✅ Created action item #${result.lastInsertRowid}: "${actionItem.title}" for ${actionItem.assigned_to}${actionItem.assigned_to_id ? ` (ID: ${actionItem.assigned_to_id})` : ''}`);
-      return newActionItem!;
-    } catch (error) {
-      console.error(`❌ Error creating action item:`, error);
-      throw error;
-    }
-  }
-
-  // Get action item by ID
-  getActionItemById(id: number): ActionItem | undefined {
-    try {
-      const stmt = this.db.prepare('SELECT * FROM action_items WHERE id = ?');
-      const row = stmt.get(id) as ActionItem | undefined;
-      return row;
-    } catch (error) {
-      console.error(`❌ Error getting action item ${id}:`, error);
-      return undefined;
-    }
-  }
-
-  // Get all action items for a conversation
-  getActionItemsByConversation(conversationId: string): ActionItem[] {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT * FROM action_items 
-        WHERE conversation_id = ? 
-        ORDER BY created_at DESC
-      `);
-      const rows = stmt.all(conversationId) as ActionItem[];
-      console.log(`🔍 Retrieved ${rows.length} action items for conversation: ${conversationId}`);
-      return rows;
-    } catch (error) {
-      console.error(`❌ Error getting action items for conversation ${conversationId}:`, error);
-      return [];
-    }
-  }
-
-  // Get action items assigned to a specific person
-  getActionItemsForUser(assignedTo: string, status?: string): ActionItem[] {
-    try {
-      let sql = 'SELECT * FROM action_items WHERE assigned_to = ?';
-      const params: any[] = [assignedTo];
-
-      if (status) {
-        sql += ' AND status = ?';
-        params.push(status);
-      }
-
-      sql += ' ORDER BY priority DESC, due_date ASC, created_at DESC';
-
-      const stmt = this.db.prepare(sql);
-      const rows = stmt.all(...params) as ActionItem[];
-      console.log(`🔍 Retrieved ${rows.length} action items for user: ${assignedTo}${status ? ` (status: ${status})` : ''}`);
-      return rows;
-    } catch (error) {
-      console.error(`❌ Error getting action items for user ${assignedTo}:`, error);
-      return [];
-    }
-  }
-
-  // Get action items assigned to a specific user by ID (for personal DMs)
-  getActionItemsByUserId(userId: string, status?: string): ActionItem[] {
-    try {
-      let sql = 'SELECT * FROM action_items WHERE assigned_to_id = ?';
-      const params: any[] = [userId];
-
-      if (status) {
-        sql += ' AND status = ?';
-        params.push(status);
-      }
-
-      sql += ' ORDER BY priority DESC, due_date ASC, created_at DESC';
-
-      const stmt = this.db.prepare(sql);
-      const rows = stmt.all(...params) as ActionItem[];
-      console.log(`🔍 Retrieved ${rows.length} action items for user ID: ${userId}${status ? ` (status: ${status})` : ''}`);
-      return rows;
-    } catch (error) {
-      console.error(`❌ Error getting action items for user ID ${userId}:`, error);
-      return [];
-    }
-  }
-
-  // Update action item status
-  updateActionItemStatus(id: number, status: ActionItem['status'], updatedBy?: string): boolean {
-    try {
-      const stmt = this.db.prepare(`
-        UPDATE action_items 
-        SET status = ?, updated_at = CURRENT_TIMESTAMP 
-        WHERE id = ?
-      `);
-      const result = stmt.run(status, id);
-
-      if (result.changes > 0) {
-        console.log(`✅ Updated action item #${id} status to: ${status}${updatedBy ? ` by ${updatedBy}` : ''}`);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error(`❌ Error updating action item ${id} status:`, error);
-      return false;
-    }
-  }
-
-  // Clear all action items for a conversation
-  clearActionItems(conversationId: string): number {
-    try {
-      const stmt = this.db.prepare('DELETE FROM action_items WHERE conversation_id = ?');
-      const result = stmt.run(conversationId);
-      console.log(`🧹 Cleared ${result.changes} action items for conversation: ${conversationId}`);
-      return result.changes as number;
-    } catch (error) {
-      console.error(`❌ Error clearing action items for conversation ${conversationId}:`, error);
-      return 0;
-    }
-  }
-
-  // Clear ALL action items (for complete database reset)
-  clearAllActionItems(): number {
-    try {
-      const stmt = this.db.prepare('DELETE FROM action_items');
-      const result = stmt.run();
-      console.log(`🧹 Cleared ALL action items from database: ${result.changes} items removed`);
-      return result.changes as number;
-    } catch (error) {
-      console.error(`❌ Error clearing all action items:`, error);
-      return 0;
-    }
-  }
-
-  // Get action items summary for debugging
-  getActionItemsSummary(): any {
-    try {
-      const totalItems = this.db.prepare('SELECT COUNT(*) as count FROM action_items').get() as { count: number };
-      const statusCounts = this.db.prepare(`
-        SELECT status, COUNT(*) as count 
-        FROM action_items 
-        GROUP BY status
-      `).all() as { status: string; count: number }[];
-
-      const priorityCounts = this.db.prepare(`
-        SELECT priority, COUNT(*) as count 
-        FROM action_items 
-        GROUP BY priority
-      `).all() as { priority: string; count: number }[];
-
-      return {
-        total_action_items: totalItems.count,
-        by_status: statusCounts,
-        by_priority: priorityCounts
-      };
-    } catch (error) {
-      console.error(`❌ Error getting action items summary:`, error);
-      return { error: 'Failed to get summary' };
-    }
-  }
-
-  // Get all action items across all conversations (for debugging)
-  getAllActionItems(): ActionItem[] {
-    try {
-      const sql = 'SELECT * FROM action_items ORDER BY created_at DESC';
-      const stmt = this.db.prepare(sql);
-      const rows = stmt.all() as ActionItem[];
-      console.log(`🔍 Retrieved ${rows.length} action items across all conversations`);
-      return rows;
-    } catch (error) {
-      console.error(`❌ Error getting all action items:`, error);
-      return [];
     }
   }
 

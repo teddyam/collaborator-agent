@@ -7,7 +7,6 @@ import { getModelConfig } from '../utils/config';
 import { MessageContext } from '../utils/messageContext';
 import { extractTimeRange } from '../utils/utils';
 import { CAPABILITY_DEFINITIONS } from '../capabilities/registry';
-import { ConversationMemory } from '../storage/conversationMemory';
 
 // Result interface for manager responses
 export interface ManagerResult {
@@ -26,11 +25,10 @@ interface ManagerState {
 export class ManagerPrompt {
     private prompt: ChatPrompt;
 
-    constructor(private storage: SqliteKVStore, private conversationHistory: ConversationMemory) {
+    constructor(private storage: SqliteKVStore, private context: MessageContext) {
         this.prompt = this.createManagerPrompt();
     }
 
-    // Create a prompt with context-specific handlers
     private createManagerPrompt(): ChatPrompt {
         const managerModelConfig = getModelConfig('manager');
         let prompt = new ChatPrompt({
@@ -41,7 +39,7 @@ export class ManagerPrompt {
                 endpoint: managerModelConfig.endpoint,
                 apiVersion: managerModelConfig.apiVersion,
             }),
-            messages: this.conversationHistory,
+            messages: this.context.memory.values()
         }).function('calculate_time_range', 'Parse natural language time expressions and calculate exact start/end times for time-based queries', {
             type: 'object' as const,
             properties: {
@@ -55,58 +53,48 @@ export class ManagerPrompt {
             console.log(`🕒 FUNCTION CALL: calculate_time_range - parsing "${args.time_phrase}"`);
 
             const timeRange = extractTimeRange(args.time_phrase);
+            const now = new Date();
 
-            if (!timeRange) {
-                console.warn(`⚠️ Could not parse time phrase: "${args.time_phrase}"`);
-                return JSON.stringify({
-                    status: 'error',
-                    message: `Could not parse time expression: "${args.time_phrase}"`
-                });
-            }
-
-            const startTime = timeRange.from.toISOString();
-            const endTime = timeRange.to.toISOString();
-            const description = `${args.time_phrase} (${timeRange.from.toLocaleDateString()} to ${timeRange.to.toLocaleDateString()})`;
+            const startTime = timeRange?.from.toString() || new Date(now.getTime() - 24 * 60 * 60 * 1000).toString();
+            const endTime = timeRange?.to.toString() || now.toString;
 
             console.log(`📅 Parsed "${args.time_phrase}" to: ${startTime} → ${endTime}`);
 
-            return JSON.stringify({
-                status: 'success',
-                calculated_start_time: startTime,
-                calculated_end_time: endTime,
-                timespan_description: description
-            });
-        });
+
+        }).function('clear_conversation_history', 'Clear conversation history in the database for the current conversation',
+            async () => {
+                this.context.memory.clear();
+            }
+        );
 
         return prompt;
     }
 
-    private addCapabilities(context: MessageContext, state: ManagerState) {
+    private addCapabilities(state: ManagerState) {
         for (const capability of CAPABILITY_DEFINITIONS) {
             this.prompt.function(
                 capability.name,
                 capability.description,
                 capability.schema,
                 async (args: any) => {
-                    return capability.handler(args, context, state, this.storage);
+                    return capability.handler(args, this.context, state, this.storage);
                 }
             );
         }
     }
 
-    async processRequest(context: MessageContext): Promise<ManagerResult> {
+    async processRequest(): Promise<ManagerResult> {
         try {
             const state: ManagerState = {
                 delegatedCapability: null,
                 searchCitations: []
             };
 
-            this.addCapabilities(context, state);
+            this.addCapabilities(state);
 
-            const response = await this.prompt.send(context.text);
-
+            const response = await this.prompt.send(this.context.text);
             console.log(this.prompt.messages.values());
-            
+
             return {
                 response: response.content || 'No response generated',
                 delegatedCapability: state.delegatedCapability,
