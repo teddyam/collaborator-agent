@@ -23,7 +23,7 @@ export class ConversationMemory {
         this.store.clearConversation(this.conversationId);
     }
 
-    getMessagesByTimeRange(startTime?: string, endTime?: string): MessageRecord[] {
+    getMessagesByTimeRange(startTime: string, endTime: string): MessageRecord[] {
         return this.store.getMessagesByTimeRange(this.conversationId, startTime, endTime);
     }
 

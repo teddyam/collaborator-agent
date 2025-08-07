@@ -57,9 +57,9 @@ app.on('message', async ({ send, activity, api }) => {
   if (!activity.conversation.isGroup || botMentioned) { // process request if One-on-One chat or if @mentioned in Groupchat
     await send({ type: 'typing' });
 
-    const manager = new ManagerPrompt(storage, context);
+    const manager = new ManagerPrompt(context);
     const result = await manager.processRequest();
-    const formattedResult = finalizePromptResponse(result.response, result.citations);
+    const formattedResult = finalizePromptResponse(result.response, context);
 
     const sent = await send(formattedResult);
     formattedResult.id = sent.id;

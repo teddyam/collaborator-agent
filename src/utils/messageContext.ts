@@ -2,6 +2,7 @@ import { IMessageActivity } from "@microsoft/teams.api";
 import { Client } from "@microsoft/teams.api";
 import { SqliteKVStore } from "../storage/storage";
 import { ConversationMemory } from '../storage/conversationMemory';
+import { CitationAppearance } from "@microsoft/teams.api";
 
 /**
  * Context object that stores all important information for processing a message
@@ -16,8 +17,9 @@ export interface MessageContext {
   activityId: string;
   members: Array<{ name: string, id: string }>; // Available conversation members
   memory: ConversationMemory; // get convo memory by agent type
-  startTime?: string;
-  endTime?: string;
+  startTime: string;
+  endTime: string;
+  citations: CitationAppearance[]
 }
 
 async function getConversationParticipantsFromAPI(
@@ -73,6 +75,12 @@ export async function createMessageContext(
 
   const memory = new ConversationMemory(storage, conversationId);
 
+  const now = new Date();
+
+  const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const endTime =  now.toISOString();
+  const citations: CitationAppearance[] = [];
+
   const context: MessageContext = {
     text,
     conversationId,
@@ -83,6 +91,9 @@ export async function createMessageContext(
     activityId,
     members,
     memory,
+    startTime,
+    endTime,
+    citations
   };
 
   return context;

@@ -1,6 +1,4 @@
 import { ChatPrompt } from '@microsoft/teams.ai';
-import { CitationAppearance } from '@microsoft/teams.api';
-import { SqliteKVStore } from '../storage/storage';
 import { MessageContext } from '../utils/messageContext';
 
 /**
@@ -9,24 +7,7 @@ import { MessageContext } from '../utils/messageContext';
 export interface CapabilityDefinition {
   name: string;
   description: string;
-  schema: any;
-  handler: (args: any, context: MessageContext, state: any, storage?: SqliteKVStore) => Promise<string>;
-}
-
-/**
- * Configuration interface for capability-specific options
- */
-export interface CapabilityOptions {
-  // Storage for action items
-  storage?: SqliteKVStore;
-  
-  // Search specific
-  citationsArray?: CitationAppearance[];
-  
-  // Time range parameters (unified across all capabilities)
-  calculatedStartTime?: string;
-  calculatedEndTime?: string;
-  timespanDescription?: string;
+  handler: (context: MessageContext) => Promise<string>;
 }
 
 /**
@@ -34,7 +15,6 @@ export interface CapabilityOptions {
  */
 export interface CapabilityResult {
   response: string;
-  citations?: CitationAppearance[];
   error?: string;
 }
 
@@ -50,17 +30,13 @@ export interface Capability {
   /**
    * Create a ChatPrompt instance for this capability
    */
-  createPrompt(context: MessageContext, options?: CapabilityOptions): ChatPrompt;
+  createPrompt(context: MessageContext): ChatPrompt;
   
   /**
    * Process a user request using this capability
    */
-  processRequest(context: MessageContext, options?: CapabilityOptions): Promise<CapabilityResult>;
-  
-  /**
-   * Get the function schemas that this capability provides
-   */
-  getFunctionSchemas(): Array<{name: string, schema: any}>;
+  processRequest(context: MessageContext): Promise<CapabilityResult>;
+
 }
 
 /**
@@ -69,35 +45,19 @@ export interface Capability {
 export abstract class BaseCapability implements Capability {
   abstract readonly name: string;
   
-  abstract createPrompt(context: MessageContext, options?: CapabilityOptions): ChatPrompt;
-  
-  abstract getFunctionSchemas(): Array<{name: string, schema: any}>;
+  abstract createPrompt(context: MessageContext): ChatPrompt;
   
   /**
    * Default implementation of processRequest that creates a prompt and sends the request
    */
-  async processRequest(context: MessageContext, options: CapabilityOptions = {}): Promise<CapabilityResult> {
+  async processRequest(context: MessageContext): Promise<CapabilityResult> {
     try {
-      const prompt = this.createPrompt(context, options);
+      const prompt = this.createPrompt(context);
       
-      // Build enhanced request with time parameters if provided
-      let enhancedRequest = context.text;
-      if (options.calculatedStartTime && options.calculatedEndTime) {
-        enhancedRequest = `${context.text}
-
-Pre-calculated time range:
-- Start: ${options.calculatedStartTime}
-- End: ${options.calculatedEndTime}
-- Description: ${options.timespanDescription || 'calculated timespan'}
-
-Use these exact timestamps for any time-based queries if needed.`;
-      }
-      
-      const response = await prompt.send(enhancedRequest);
+      const response = await prompt.send(context.text);
       
       return {
-        response: response.content || 'No response generated',
-        citations: options.citationsArray // Return citations if they were populated during execution
+        response: response.content || 'No response generated'
       };
     } catch (error) {
       return {

@@ -1,50 +1,21 @@
-// Function schemas for search operations
+import { ObjectSchema } from "@microsoft/teams.ai";
 
-// Schema for Search capability delegation function
-export const SEARCH_DELEGATION_SCHEMA = {
-    type: 'object' as const,
-    properties: {
-        calculated_start_time: {
-            type: 'string' as const,
-            description: 'Pre-calculated start time in ISO format (optional, only if time range is specified)'
-        },
-        calculated_end_time: {
-            type: 'string' as const,
-            description: 'Pre-calculated end time in ISO format (optional, only if time range is specified)'
-        },
-        timespan_description: {
-            type: 'string' as const,
-            description: 'Human-readable description of the calculated time range (optional)'
-        }
-    },
-    required: []
-};
-
-export const SEARCH_MESSAGES_SCHEMA = {
-  type: 'object' as const,
+export const SEARCH_MESSAGES_SCHEMA : ObjectSchema = {
+  type: 'object',
   properties: {
     keywords: {
-      type: 'array' as const,
-      items: { type: 'string' as const },
-      description: 'Keywords to search for in message content (excluding time expressions)'
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Keywords to search for in the message content'
     },
     participants: {
-      type: 'array' as const,
-      items: { type: 'string' as const },
-      description: 'Names of people who should be involved in the conversation'
-    },
-    start_time: {
-      type: 'string' as const,
-      description: 'Start time for search range (ISO format). Calculate this based on user request like "earlier today", "yesterday", etc.'
-    },
-    end_time: {
-      type: 'string' as const,
-      description: 'End time for search range (ISO format). Usually current time for "earlier today" or end of day for specific dates.'
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Optional: list of participant names to filter messages by who said them'
     },
     max_results: {
-      type: 'number' as const,
-      description: 'Maximum number of results to return (default 10)',
-      default: 10
+      type: 'number',
+      description: 'Optional: maximum number of results to return (default is 5)'
     }
   },
   required: ['keywords']

@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 interface MessageRecordExtension {
   id?: number;
   conversation_id?: string;
+  content: string;
   name: string;
   timestamp: string;
   activity_id?: string; // used to create deeplink for Search Capability
@@ -78,12 +79,11 @@ export class SqliteKVStore {
     return stmt.all(conversationId).map((row) => JSON.parse(row.blob) as MessageRecord);
   }
 
-  getMessagesByTimeRange(conversationId: string, startTime?: string, endTime?: string): MessageRecord[] {
-    const messages = this.get(conversationId);
-    return messages.filter(m => {
-      const ts = m.timestamp;
-      return (!startTime || ts >= startTime) && (!endTime || ts <= endTime);
-    });
+  getMessagesByTimeRange(conversationId: string, startTime: string, endTime: string): MessageRecord[] {
+    const stmt = this.db.prepare<{}, { blob: string }>(
+      'SELECT blob FROM messages WHERE conversation_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC'
+    );
+    return stmt.all([conversationId, startTime, endTime]).map(row => JSON.parse(row.blob) as MessageRecord);
   }
 
   getRecentMessages(conversationId: string, limit: number = 10): MessageRecord[] {
